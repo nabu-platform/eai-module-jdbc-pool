@@ -8,25 +8,24 @@ import javax.sql.DataSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.codahale.metrics.MetricRegistry;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 
-import be.nabu.eai.repository.api.MetricsProvider;
 import be.nabu.eai.repository.api.Repository;
 import be.nabu.eai.repository.artifacts.jaxb.JAXBArtifact;
 import be.nabu.libs.artifacts.api.StartableArtifact;
 import be.nabu.libs.artifacts.api.StoppableArtifact;
+import be.nabu.libs.metrics.api.MetricInstance;
 import be.nabu.libs.resources.api.ResourceContainer;
 import be.nabu.libs.services.jdbc.api.DataSourceProviderArtifact;
 import be.nabu.libs.services.jdbc.api.SQLDialect;
 
-public class JDBCPoolArtifact extends JAXBArtifact<JDBCPoolConfiguration> implements StartableArtifact, StoppableArtifact, DataSourceProviderArtifact, MetricsProvider<JDBCMetrics> {
+public class JDBCPoolArtifact extends JAXBArtifact<JDBCPoolConfiguration> implements StartableArtifact, StoppableArtifact, DataSourceProviderArtifact {
 
 	private HikariDataSource dataSource;
 	private Logger logger = LoggerFactory.getLogger(getClass());
 	private SQLDialect dialect;
-	private MetricRegistry metrics;
+	private MetricInstance metrics;
 	
 	public JDBCPoolArtifact(String id, ResourceContainer<?> directory, Repository repository) {
 		super(id, directory, repository, "jdbcPool.xml", JDBCPoolConfiguration.class);
@@ -52,8 +51,8 @@ public class JDBCPoolArtifact extends JAXBArtifact<JDBCPoolConfiguration> implem
 			if (!properties.isEmpty()) {
 				HikariConfig hikariConfig = new HikariConfig(properties);
 				if (getConfiguration().getEnableMetrics() != null && getConfiguration().getEnableMetrics()) {
-					metrics = new MetricRegistry();
-					hikariConfig.setMetricRegistry(metrics);
+					metrics = getRepository().getMetricInstance(getId());
+					hikariConfig.setMetricsTrackerFactory(new MetricsTrackerFactoryImpl(metrics));
 				}
 				dataSource = new HikariDataSource(hikariConfig);
 			}
@@ -61,28 +60,6 @@ public class JDBCPoolArtifact extends JAXBArtifact<JDBCPoolConfiguration> implem
 		catch (IOException e) {
 			logger.error("Could not load properties", e);
 			throw new RuntimeException(e);
-		}
-	}
-	
-	@Override
-	public JDBCMetrics getMetrics() {
-		return metrics == null ? null : JDBCMetrics.build(getId(), metrics);
-	}
-
-	@Override
-	public boolean isEnableMetrics() {
-		return metrics != null;
-	}
-	
-	@Override
-	public void setEnableMetrics(boolean enable) {
-		if (enable && metrics == null) {
-			metrics = new MetricRegistry();
-			dataSource.setMetricRegistry(metrics);
-		}
-		else if (!enable && metrics != null) {
-			metrics = null;
-			dataSource.setMetricRegistry(null);
 		}
 	}
 	
@@ -141,11 +118,6 @@ public class JDBCPoolArtifact extends JAXBArtifact<JDBCPoolConfiguration> implem
 			throw new RuntimeException(e);
 		}
 		return dialect;
-	}
-
-	@Override
-	public Class<JDBCMetrics> getMetricsClass() {
-		return JDBCMetrics.class;
 	}
 
 	@Override
