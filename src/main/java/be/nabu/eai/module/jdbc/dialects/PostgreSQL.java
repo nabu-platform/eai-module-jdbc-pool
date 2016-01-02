@@ -8,12 +8,15 @@ import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import be.nabu.eai.developer.managers.JDBCServiceGUIManager;
 import be.nabu.libs.property.ValueUtils;
 import be.nabu.libs.services.jdbc.api.SQLDialect;
+import be.nabu.libs.types.TypeUtils;
 import be.nabu.libs.types.api.ComplexType;
 import be.nabu.libs.types.api.Element;
 import be.nabu.libs.types.api.SimpleType;
 import be.nabu.libs.types.properties.FormatProperty;
+import be.nabu.libs.types.properties.MinOccursProperty;
 import be.nabu.libs.types.utils.DateUtils;
 import be.nabu.libs.types.utils.DateUtils.Granularity;
 
@@ -75,4 +78,74 @@ public class PostgreSQL implements SQLDialect {
 		return sql;
 	}
 
+	@Override
+	public String buildCreateSQL(ComplexType type) {
+		StringBuilder builder = new StringBuilder();
+		builder.append("create table " + JDBCServiceGUIManager.uncamelify(type.getName()) + " (\n");
+		boolean first = true;
+		for (Element<?> child : TypeUtils.getAllChildren(type)) {
+			if (first) {
+				first = false;
+			}
+			else {
+				builder.append(",\n");
+			}
+			// if we have a complex type, generate an id field that references it
+			if (child.getType() instanceof ComplexType) {
+				builder.append("\t" + JDBCServiceGUIManager.uncamelify(child.getName()) + "_id uuid");
+			}
+			else {
+				builder.append("\t" + JDBCServiceGUIManager.uncamelify(child.getName())).append(" ")
+					.append(getPredefinedSQLType(((SimpleType<?>) child.getType()).getInstanceClass()));
+			}
+			if (child.getName().equals("id")) {
+				builder.append(" primary key");
+			}
+			else {
+				Integer value = ValueUtils.getValue(MinOccursProperty.getInstance(), child.getProperties());
+				if (value == null || value > 0) {
+					builder.append(" not null");
+				}
+			}
+		}
+		builder.append("\n);");
+		return builder.toString();
+	}
+
+	
+	public static String getPredefinedSQLType(Class<?> instanceClass) {
+		if (String.class.isAssignableFrom(instanceClass) || char[].class.isAssignableFrom(instanceClass)) {
+			return "varchar";
+		}
+		else if (byte[].class.isAssignableFrom(instanceClass)) {
+			return "varbinary";
+		}
+		else if (Integer.class.isAssignableFrom(instanceClass)) {
+			return "integer";
+		}
+		else if (Long.class.isAssignableFrom(instanceClass)) {
+			return "bigint";
+		}
+		else if (Double.class.isAssignableFrom(instanceClass)) {
+			return "decimal";
+		}
+		else if (Float.class.isAssignableFrom(instanceClass)) {
+			return "decimal";
+		}
+		else if (Short.class.isAssignableFrom(instanceClass)) {
+			return "smallint";
+		}
+		else if (Boolean.class.isAssignableFrom(instanceClass)) {
+			return "boolean";
+		}
+		else if (UUID.class.isAssignableFrom(instanceClass)) {
+			return "uuid";
+		}
+		else if (Date.class.isAssignableFrom(instanceClass)) {
+			return "timestamp";
+		}
+		else {
+			return null;
+		}
+	}
 }

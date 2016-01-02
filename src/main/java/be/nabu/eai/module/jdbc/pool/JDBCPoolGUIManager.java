@@ -29,4 +29,5 @@ public class JDBCPoolGUIManager extends BaseJAXBGUIManager<JDBCPoolConfiguration
 	public String getCategory() {
 		return "Protocols";
 	}
+	
 }
