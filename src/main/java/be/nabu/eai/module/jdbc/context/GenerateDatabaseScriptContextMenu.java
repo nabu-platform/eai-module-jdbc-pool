@@ -7,6 +7,7 @@ import javafx.scene.control.MenuItem;
 import be.nabu.eai.developer.api.EntryContextMenuProvider;
 import be.nabu.eai.developer.util.Confirm;
 import be.nabu.eai.developer.util.Confirm.ConfirmType;
+import be.nabu.eai.repository.EAIRepositoryUtils;
 import be.nabu.eai.repository.api.Entry;
 import be.nabu.libs.services.jdbc.api.SQLDialect;
 import be.nabu.libs.types.api.ComplexType;
@@ -17,7 +18,7 @@ public class GenerateDatabaseScriptContextMenu implements EntryContextMenuProvid
 	public MenuItem getContext(Entry entry) {
 		if (entry.isNode() && ComplexType.class.isAssignableFrom(entry.getNode().getArtifactClass())) {
 			Menu menu = new Menu("Create SQL");
-			for (final Class<SQLDialect> clazz : entry.getRepository().getImplementationsFor(SQLDialect.class)) {
+			for (final Class<SQLDialect> clazz : EAIRepositoryUtils.getImplementationsFor(entry.getRepository().getClassLoader(), SQLDialect.class)) {
 				MenuItem item = new MenuItem(clazz.getSimpleName());
 				item.addEventHandler(ActionEvent.ANY, new EventHandler<ActionEvent>() {
 					@Override
