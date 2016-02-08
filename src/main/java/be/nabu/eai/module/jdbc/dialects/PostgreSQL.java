@@ -8,7 +8,7 @@ import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import be.nabu.eai.developer.managers.JDBCServiceGUIManager;
+import be.nabu.eai.repository.EAIRepositoryUtils;
 import be.nabu.libs.property.ValueUtils;
 import be.nabu.libs.services.jdbc.api.SQLDialect;
 import be.nabu.libs.types.TypeUtils;
@@ -81,7 +81,7 @@ public class PostgreSQL implements SQLDialect {
 	@Override
 	public String buildCreateSQL(ComplexType type) {
 		StringBuilder builder = new StringBuilder();
-		builder.append("create table " + JDBCServiceGUIManager.uncamelify(type.getName()) + " (\n");
+		builder.append("create table " + EAIRepositoryUtils.uncamelify(type.getName()) + " (\n");
 		boolean first = true;
 		for (Element<?> child : TypeUtils.getAllChildren(type)) {
 			if (first) {
@@ -92,10 +92,10 @@ public class PostgreSQL implements SQLDialect {
 			}
 			// if we have a complex type, generate an id field that references it
 			if (child.getType() instanceof ComplexType) {
-				builder.append("\t" + JDBCServiceGUIManager.uncamelify(child.getName()) + "_id uuid");
+				builder.append("\t" + EAIRepositoryUtils.uncamelify(child.getName()) + "_id uuid");
 			}
 			else {
-				builder.append("\t" + JDBCServiceGUIManager.uncamelify(child.getName())).append(" ")
+				builder.append("\t" + EAIRepositoryUtils.uncamelify(child.getName())).append(" ")
 					.append(getPredefinedSQLType(((SimpleType<?>) child.getType()).getInstanceClass()));
 			}
 			if (child.getName().equals("id")) {
