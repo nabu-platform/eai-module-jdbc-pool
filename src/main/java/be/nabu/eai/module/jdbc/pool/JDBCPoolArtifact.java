@@ -17,10 +17,10 @@ import be.nabu.libs.artifacts.api.StartableArtifact;
 import be.nabu.libs.artifacts.api.StoppableArtifact;
 import be.nabu.libs.metrics.api.MetricInstance;
 import be.nabu.libs.resources.api.ResourceContainer;
-import be.nabu.libs.services.jdbc.api.DataSourceProviderArtifact;
+import be.nabu.libs.services.jdbc.api.DataSourceWithDialectProviderArtifact;
 import be.nabu.libs.services.jdbc.api.SQLDialect;
 
-public class JDBCPoolArtifact extends JAXBArtifact<JDBCPoolConfiguration> implements StartableArtifact, StoppableArtifact, DataSourceProviderArtifact {
+public class JDBCPoolArtifact extends JAXBArtifact<JDBCPoolConfiguration> implements StartableArtifact, StoppableArtifact, DataSourceWithDialectProviderArtifact {
 
 	private HikariDataSource dataSource;
 	private Logger logger = LoggerFactory.getLogger(getClass());
