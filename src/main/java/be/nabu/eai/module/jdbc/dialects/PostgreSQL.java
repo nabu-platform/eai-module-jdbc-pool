@@ -36,7 +36,7 @@ public class PostgreSQL implements SQLDialect {
 	
 	@Override
 	public String rewrite(String sql, ComplexType input, ComplexType output) {
-		Pattern pattern = Pattern.compile("(?<!:)[:$][\\w]+(?!::)\\b");
+		Pattern pattern = Pattern.compile("(?<!:)[:$][\\w]+(?!::)(\\b|$|\\Z|\\z)");
 		Matcher matcher = pattern.matcher(sql);
 		StringBuilder result = new StringBuilder();
 		int last = 0;
