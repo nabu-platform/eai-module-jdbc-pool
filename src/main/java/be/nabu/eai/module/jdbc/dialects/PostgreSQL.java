@@ -25,8 +25,18 @@ public class PostgreSQL implements SQLDialect {
 	private Logger logger = LoggerFactory.getLogger(getClass());
 	
 	@Override
+	public String getSQLName(Class<?> instanceClass) {
+		if (UUID.class.isAssignableFrom(instanceClass)) {
+			return "uuid";
+		}
+		else {
+			return SQLDialect.super.getSQLName(instanceClass);
+		}
+	}
+	
+	@Override
 	public String rewrite(String sql, ComplexType input, ComplexType output) {
-		Pattern pattern = Pattern.compile("(?<!:)[:$][\\w]+");
+		Pattern pattern = Pattern.compile("(?<!:)[:$][\\w]+(?!::)\\b");
 		Matcher matcher = pattern.matcher(sql);
 		StringBuilder result = new StringBuilder();
 		int last = 0;
@@ -56,6 +66,10 @@ public class PostgreSQL implements SQLDialect {
 				}
 				if (postgreType != null) {
 					result.append("::").append(postgreType);
+					boolean isList = element.getType().isList(element.getProperties());
+					if (isList) {
+						result.append("[]");
+					}
 				}
 			}
 			last = matcher.end();
