@@ -35,6 +35,42 @@ public class GenerateDatabaseScriptContextMenu implements EntryContextMenuProvid
 			}
 			return menu;
 		}
+		else if (!entry.isLeaf()) {
+			boolean hasComplexType = false;
+			for (Entry child : entry) {
+				if (child.isNode() && ComplexType.class.isAssignableFrom(child.getNode().getArtifactClass())) {
+					hasComplexType = true;
+					break;
+				}
+			}
+			if (hasComplexType) {
+				Menu menu = new Menu("Create All SQL");
+				for (final Class<SQLDialect> clazz : EAIRepositoryUtils.getImplementationsFor(entry.getRepository().getClassLoader(), SQLDialect.class)) {
+					MenuItem item = new MenuItem(clazz.getSimpleName());
+					item.addEventHandler(ActionEvent.ANY, new EventHandler<ActionEvent>() {
+						@Override
+						public void handle(ActionEvent arg0) {
+							try {
+								StringBuilder builder = new StringBuilder();
+								SQLDialect dialect = clazz.newInstance();
+								for (Entry child : entry) {
+									if (child.isNode() && ComplexType.class.isAssignableFrom(child.getNode().getArtifactClass())) {
+										builder.append(dialect.buildCreateSQL((ComplexType) child.getNode().getArtifact()));
+										builder.append("\n");
+									}
+								}
+								Confirm.confirm(ConfirmType.INFORMATION, "Create All SQL: " + entry.getId(), builder.toString(), null);
+							}
+							catch (Exception e) {
+								e.printStackTrace();
+							}
+						}
+					});
+					menu.getItems().add(item);
+				}
+				return menu;
+			}
+		}
 		return null;
 	}
 
