@@ -102,7 +102,7 @@ public class JDBCPoolArtifact extends JAXBArtifact<JDBCPoolConfiguration> implem
 	public SQLDialect getDialect() {
 		try {
 			// if a dialect is set but the properties don't contain one (or a different one) reset it to null
-			if (dialect != null && (getConfiguration().getDialect() == null || !getConfiguration().getDialect().equals(dialect))) {
+			if (dialect != null && (getConfiguration().getDialect() == null || !getConfiguration().getDialect().equals(dialect.getClass()))) {
 				dialect = null;
 			}
 			// if a dialect is configured but none is found, load it
