@@ -129,7 +129,8 @@ public class PostgreSQL implements SQLDialect {
 	
 	public static String getPredefinedSQLType(Class<?> instanceClass) {
 		if (String.class.isAssignableFrom(instanceClass) || char[].class.isAssignableFrom(instanceClass)) {
-			return "varchar";
+			// best practice to use application level limits on text
+			return "text";
 		}
 		else if (byte[].class.isAssignableFrom(instanceClass)) {
 			return "varbinary";
