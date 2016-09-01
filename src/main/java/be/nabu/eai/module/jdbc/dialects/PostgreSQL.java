@@ -1,5 +1,6 @@
 package be.nabu.eai.module.jdbc.dialects;
 
+import java.net.URI;
 import java.util.Date;
 import java.util.UUID;
 import java.util.regex.Matcher;
@@ -128,7 +129,7 @@ public class PostgreSQL implements SQLDialect {
 
 	
 	public static String getPredefinedSQLType(Class<?> instanceClass) {
-		if (String.class.isAssignableFrom(instanceClass) || char[].class.isAssignableFrom(instanceClass)) {
+		if (String.class.isAssignableFrom(instanceClass) || char[].class.isAssignableFrom(instanceClass) || URI.class.isAssignableFrom(instanceClass)) {
 			// best practice to use application level limits on text
 			return "text";
 		}
