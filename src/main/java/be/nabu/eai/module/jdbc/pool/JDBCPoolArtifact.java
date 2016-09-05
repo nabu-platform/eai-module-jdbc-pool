@@ -52,7 +52,9 @@ public class JDBCPoolArtifact extends JAXBArtifact<JDBCPoolConfiguration> implem
 				HikariConfig hikariConfig = new HikariConfig(properties);
 				if (getConfiguration().getEnableMetrics() != null && getConfiguration().getEnableMetrics()) {
 					metrics = getRepository().getMetricInstance(getId());
-					hikariConfig.setMetricsTrackerFactory(new MetricsTrackerFactoryImpl(metrics));
+					if (metrics != null) {
+						hikariConfig.setMetricsTrackerFactory(new MetricsTrackerFactoryImpl(metrics));
+					}
 				}
 				dataSource = new HikariDataSource(hikariConfig);
 			}
