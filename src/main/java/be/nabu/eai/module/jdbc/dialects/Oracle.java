@@ -1,18 +1,15 @@
 package be.nabu.eai.module.jdbc.dialects;
 
 import java.net.URI;
+import java.sql.Types;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.TimeZone;
 import java.util.UUID;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import be.nabu.eai.repository.EAIRepositoryUtils;
 import be.nabu.libs.property.ValueUtils;
+import be.nabu.libs.property.api.Value;
 import be.nabu.libs.services.jdbc.api.SQLDialect;
 import be.nabu.libs.types.TypeUtils;
 import be.nabu.libs.types.api.ComplexContent;
@@ -21,77 +18,50 @@ import be.nabu.libs.types.api.Element;
 import be.nabu.libs.types.api.SimpleType;
 import be.nabu.libs.types.properties.FormatProperty;
 import be.nabu.libs.types.properties.MinOccursProperty;
-import be.nabu.libs.types.utils.DateUtils;
-import be.nabu.libs.types.utils.DateUtils.Granularity;
 
-public class PostgreSQL implements SQLDialect {
+public class Oracle implements SQLDialect {
 
-	private Logger logger = LoggerFactory.getLogger(getClass());
-	
 	@Override
 	public String getSQLName(Class<?> instanceClass) {
-		if (UUID.class.isAssignableFrom(instanceClass)) {
-			return "uuid";
-		}
-		else {
-			return SQLDialect.super.getSQLName(instanceClass);
-		}
+		String sqlName = SQLDialect.super.getSQLName(instanceClass);
+		return sqlName == null || !sqlName.equals("varchar") ? sqlName : "varchar2";
 	}
 	
 	@Override
+	public Class<?> getTargetClass(Class<?> clazz) {
+		// make sure we transform booleans to strings true/false"
+		return clazz != null && Boolean.class.equals(clazz) ? Integer.class : SQLDialect.super.getTargetClass(clazz);
+	}
+
+	@Override
+	public Integer getSQLType(Class<?> instanceClass) {
+		if (Boolean.class.equals(instanceClass)) {
+			return Types.NUMERIC;
+		}
+		else {
+			return SQLDialect.super.getSQLType(instanceClass);
+		}
+	}
+
+	@Override
 	public String rewrite(String sql, ComplexType input, ComplexType output) {
-		Pattern pattern = Pattern.compile("(?<!:)[:$][\\w]+(?!::)(\\b|$|\\Z|\\z)");
-		Matcher matcher = pattern.matcher(sql);
-		StringBuilder result = new StringBuilder();
-		int last = 0;
-		while (matcher.find()) {
-			if (matcher.end() > last) {
-				result.append(sql.substring(last, matcher.end()));
-			}
-			String name = matcher.group().substring(1);
-			Element<?> element = input.get(name);
-			if (element.getType() instanceof SimpleType) {
-				SimpleType<?> type = (SimpleType<?>) element.getType();
-				String postgreType = null;
-				if (UUID.class.isAssignableFrom(type.getInstanceClass())) {
-					postgreType = "uuid";
-				}
-				else if (Date.class.isAssignableFrom(type.getInstanceClass())) {
-					String format = ValueUtils.getValue(FormatProperty.getInstance(), element.getProperties());
-					Granularity granularity = format == null ? Granularity.TIMESTAMP : DateUtils.getGranularity(format);
-					switch(granularity) {
-						case DATE: postgreType = "date"; break;
-						case TIME: postgreType = "time"; break;
-						default: postgreType = "timestamp";
-					}
-				}
-				else if (Boolean.class.isAssignableFrom(type.getInstanceClass())) {
-					postgreType = "boolean";
-				}
-				if (postgreType != null) {
-					result.append("::").append(postgreType);
-					boolean isList = element.getType().isList(element.getProperties());
-					if (isList) {
-						result.append("[]");
-					}
-				}
-			}
-			last = matcher.end();
-		}
-		if (last < sql.length()) {
-			result.append(sql.substring(last, sql.length()));
-		}
-		logger.trace("Rewrote '{}'\n{}", new Object[] { sql, result });
-		return result.toString();
+		return sql;
 	}
 
 	@Override
 	public String limit(String sql, Integer offset, Integer limit) {
-		if (offset != null) {
-			sql = sql + " OFFSET " + offset;
-		}
-		if (limit != null) {
-			sql = sql + " LIMIT " + limit;
+		if (offset != null || limit != null) {
+			sql = "select * from (" + sql + ") where";
+			if (offset != null) {
+				sql += " rownum >= " + offset;
+			}
+			if (limit != null) {
+				if (offset != null) {
+					limit += offset;
+					sql += " and";
+				}
+				sql += " rownum < " + limit; 
+			}
 		}
 		return sql;
 	}
@@ -129,36 +99,34 @@ public class PostgreSQL implements SQLDialect {
 		builder.append("\n);");
 		return builder.toString();
 	}
-
 	
 	public static String getPredefinedSQLType(Class<?> instanceClass) {
 		if (String.class.isAssignableFrom(instanceClass) || char[].class.isAssignableFrom(instanceClass) || URI.class.isAssignableFrom(instanceClass) || instanceClass.isEnum()) {
-			// best practice to use application level limits on text
-			return "text";
+			return "varchar2(255)";
 		}
 		else if (byte[].class.isAssignableFrom(instanceClass)) {
 			return "varbinary";
 		}
 		else if (Integer.class.isAssignableFrom(instanceClass)) {
-			return "integer";
+			return "number(8, 0)";
 		}
 		else if (Long.class.isAssignableFrom(instanceClass)) {
-			return "bigint";
+			return "number(*, 0)";
 		}
 		else if (Double.class.isAssignableFrom(instanceClass)) {
-			return "decimal";
+			return "number";
 		}
 		else if (Float.class.isAssignableFrom(instanceClass)) {
-			return "decimal";
+			return "number";
 		}
 		else if (Short.class.isAssignableFrom(instanceClass)) {
-			return "smallint";
+			return "number(6, 0)";
 		}
 		else if (Boolean.class.isAssignableFrom(instanceClass)) {
-			return "boolean";
+			return "number(1, 0)";
 		}
 		else if (UUID.class.isAssignableFrom(instanceClass)) {
-			return "uuid";
+			return "varchar2(36)";
 		}
 		else if (Date.class.isAssignableFrom(instanceClass)) {
 			return "timestamp";
@@ -172,8 +140,10 @@ public class PostgreSQL implements SQLDialect {
 	public String buildInsertSQL(ComplexContent content) {
 		StringBuilder keyBuilder = new StringBuilder();
 		StringBuilder valueBuilder = new StringBuilder();
-		SimpleDateFormat formatter = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS");
-		formatter.setTimeZone(TimeZone.getTimeZone("UTC"));
+		SimpleDateFormat timestampFormatter = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS");
+		SimpleDateFormat dateFormatter = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+		timestampFormatter.setTimeZone(TimeZone.getTimeZone("UTC"));
+		dateFormatter.setTimeZone(TimeZone.getTimeZone("UTC"));
 		Date date = new Date();
 		for (Element<?> element : TypeUtils.getAllChildren(content.getType())) {
 			if (element.getType() instanceof SimpleType) {
@@ -206,7 +176,13 @@ public class PostgreSQL implements SQLDialect {
 				else {
 					boolean closeQuote = false;
 					if (Date.class.isAssignableFrom(instanceClass)) {
-						valueBuilder.append("timestamp '").append(formatter.format(value)).append("'");
+						Value<String> property = element.getProperty(FormatProperty.getInstance());
+						if (property != null && !property.getValue().equals("timestamp") && !property.getValue().contains("S") && !property.getValue().equals("time")) {
+							valueBuilder.append("to_timestamp('").append(timestampFormatter.format(value)).append("', 'yyyy-mm-dd hh24:mi:ss.ff3')");
+						}
+						else {
+							valueBuilder.append("to_date('").append(dateFormatter.format(value)).append("', 'yyyy-mm-dd hh24:mi:ss')");
+						}
 					}
 					else {
 						if (URI.class.isAssignableFrom(instanceClass) || String.class.isAssignableFrom(instanceClass) || UUID.class.isAssignableFrom(instanceClass)) {

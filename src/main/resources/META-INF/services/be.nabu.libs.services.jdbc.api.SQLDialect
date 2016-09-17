@@ -1,1 +1,2 @@
 be.nabu.eai.module.jdbc.dialects.PostgreSQL
+be.nabu.eai.module.jdbc.dialects.Oracle
