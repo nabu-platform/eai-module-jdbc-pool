@@ -69,7 +69,7 @@ public class Oracle implements SQLDialect {
 	@Override
 	public String buildCreateSQL(ComplexType type) {
 		StringBuilder builder = new StringBuilder();
-		builder.append("create table " + EAIRepositoryUtils.uncamelify(type.getName()) + " (\n");
+		builder.append("create table " + EAIRepositoryUtils.uncamelify(PostgreSQL.getName(type.getProperties())) + " (\n");
 		boolean first = true;
 		for (Element<?> child : TypeUtils.getAllChildren(type)) {
 			if (first) {
@@ -197,6 +197,6 @@ public class Oracle implements SQLDialect {
 				}
 			}
 		}
-		return "insert into " + EAIRepositoryUtils.uncamelify(content.getType().getName()) + " (\n\t" + keyBuilder.toString() + "\n) values (\n\t" + valueBuilder.toString() + "\n);";
+		return "insert into " + EAIRepositoryUtils.uncamelify(PostgreSQL.getName(content.getType().getProperties())) + " (\n\t" + keyBuilder.toString() + "\n) values (\n\t" + valueBuilder.toString() + "\n);";
 	}
 }

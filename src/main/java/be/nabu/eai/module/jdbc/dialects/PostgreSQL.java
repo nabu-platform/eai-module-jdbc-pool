@@ -13,14 +13,17 @@ import org.slf4j.LoggerFactory;
 
 import be.nabu.eai.repository.EAIRepositoryUtils;
 import be.nabu.libs.property.ValueUtils;
+import be.nabu.libs.property.api.Value;
 import be.nabu.libs.services.jdbc.api.SQLDialect;
 import be.nabu.libs.types.TypeUtils;
 import be.nabu.libs.types.api.ComplexContent;
 import be.nabu.libs.types.api.ComplexType;
 import be.nabu.libs.types.api.Element;
 import be.nabu.libs.types.api.SimpleType;
+import be.nabu.libs.types.properties.CollectionNameProperty;
 import be.nabu.libs.types.properties.FormatProperty;
 import be.nabu.libs.types.properties.MinOccursProperty;
+import be.nabu.libs.types.properties.NameProperty;
 import be.nabu.libs.types.utils.DateUtils;
 import be.nabu.libs.types.utils.DateUtils.Granularity;
 
@@ -99,7 +102,7 @@ public class PostgreSQL implements SQLDialect {
 	@Override
 	public String buildCreateSQL(ComplexType type) {
 		StringBuilder builder = new StringBuilder();
-		builder.append("create table " + EAIRepositoryUtils.uncamelify(type.getName()) + " (\n");
+		builder.append("create table " + EAIRepositoryUtils.uncamelify(getName(type.getProperties())) + " (\n");
 		boolean first = true;
 		for (Element<?> child : TypeUtils.getAllChildren(type)) {
 			if (first) {
@@ -168,6 +171,14 @@ public class PostgreSQL implements SQLDialect {
 		}
 	}
 
+	public static String getName(Value<?>...properties) {
+		String value = ValueUtils.getValue(CollectionNameProperty.getInstance(), properties);
+		if (value == null) {
+			value = ValueUtils.getValue(NameProperty.getInstance(), properties);
+		}
+		return value;
+	}
+	
 	@Override
 	public String buildInsertSQL(ComplexContent content) {
 		StringBuilder keyBuilder = new StringBuilder();
@@ -221,6 +232,6 @@ public class PostgreSQL implements SQLDialect {
 				}
 			}
 		}
-		return "insert into " + EAIRepositoryUtils.uncamelify(content.getType().getName()) + " (\n\t" + keyBuilder.toString() + "\n) values (\n\t" + valueBuilder.toString() + "\n);";
+		return "insert into " + EAIRepositoryUtils.uncamelify(getName(content.getType().getProperties())) + " (\n\t" + keyBuilder.toString() + "\n) values (\n\t" + valueBuilder.toString() + "\n);";
 	}
 }
