@@ -11,11 +11,15 @@ import be.nabu.eai.repository.EAIRepositoryUtils;
 import be.nabu.libs.property.ValueUtils;
 import be.nabu.libs.property.api.Value;
 import be.nabu.libs.services.jdbc.api.SQLDialect;
+import be.nabu.libs.types.DefinedTypeResolverFactory;
 import be.nabu.libs.types.TypeUtils;
 import be.nabu.libs.types.api.ComplexContent;
 import be.nabu.libs.types.api.ComplexType;
+import be.nabu.libs.types.api.DefinedType;
 import be.nabu.libs.types.api.Element;
 import be.nabu.libs.types.api.SimpleType;
+import be.nabu.libs.types.properties.CollectionNameProperty;
+import be.nabu.libs.types.properties.ForeignKeyProperty;
 import be.nabu.libs.types.properties.FormatProperty;
 import be.nabu.libs.types.properties.MinOccursProperty;
 
@@ -71,6 +75,7 @@ public class Oracle implements SQLDialect {
 		StringBuilder builder = new StringBuilder();
 		builder.append("create table " + EAIRepositoryUtils.uncamelify(PostgreSQL.getName(type.getProperties())) + " (\n");
 		boolean first = true;
+		StringBuilder constraints = new StringBuilder();
 		for (Element<?> child : TypeUtils.getAllChildren(type)) {
 			if (first) {
 				first = false;
@@ -86,6 +91,23 @@ public class Oracle implements SQLDialect {
 				builder.append("\t" + EAIRepositoryUtils.uncamelify(child.getName())).append(" ")
 					.append(getPredefinedSQLType(((SimpleType<?>) child.getType()).getInstanceClass()));
 			}
+			
+			Value<String> foreignKey = child.getProperty(ForeignKeyProperty.getInstance());
+			if (foreignKey != null) {
+				String[] split = foreignKey.getValue().split(":");
+				if (split.length == 2) {
+					if (!constraints.toString().isEmpty()) {
+						constraints.append(",\n");
+					}
+					DefinedType resolve = DefinedTypeResolverFactory.getInstance().getResolver().resolve(split[0]);
+					String referencedName = ValueUtils.getValue(CollectionNameProperty.getInstance(), resolve.getProperties());
+					if (referencedName == null) {
+						referencedName = resolve.getName();
+					}
+					constraints.append("\tforeign key (" +  child.getName() + ") references " + EAIRepositoryUtils.uncamelify(referencedName) + "(" + split[1] + ")");
+				}
+			}
+			
 			if (child.getName().equals("id")) {
 				builder.append(" primary key");
 			}
@@ -95,6 +117,9 @@ public class Oracle implements SQLDialect {
 					builder.append(" not null");
 				}
 			}
+		}
+		if (!constraints.toString().isEmpty()) {
+			builder.append(",\n").append(constraints.toString());
 		}
 		builder.append("\n);");
 		return builder.toString();
