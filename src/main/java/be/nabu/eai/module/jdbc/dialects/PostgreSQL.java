@@ -27,6 +27,7 @@ import be.nabu.libs.types.properties.ForeignKeyProperty;
 import be.nabu.libs.types.properties.FormatProperty;
 import be.nabu.libs.types.properties.MinOccursProperty;
 import be.nabu.libs.types.properties.NameProperty;
+import be.nabu.libs.types.properties.UniqueProperty;
 import be.nabu.libs.types.utils.DateUtils;
 import be.nabu.libs.types.utils.DateUtils.Granularity;
 
@@ -144,6 +145,11 @@ public class PostgreSQL implements SQLDialect {
 				if (value == null || value > 0) {
 					builder.append(" not null");
 				}
+			}
+			
+			Value<Boolean> property = child.getProperty(UniqueProperty.getInstance());
+			if (property != null && property.getValue()) {
+				builder.append(" unique");
 			}
 		}
 		builder.append("\n);");

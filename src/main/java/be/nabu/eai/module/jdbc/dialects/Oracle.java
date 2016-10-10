@@ -22,6 +22,7 @@ import be.nabu.libs.types.properties.CollectionNameProperty;
 import be.nabu.libs.types.properties.ForeignKeyProperty;
 import be.nabu.libs.types.properties.FormatProperty;
 import be.nabu.libs.types.properties.MinOccursProperty;
+import be.nabu.libs.types.properties.UniqueProperty;
 
 public class Oracle implements SQLDialect {
 
@@ -49,6 +50,9 @@ public class Oracle implements SQLDialect {
 
 	@Override
 	public String rewrite(String sql, ComplexType input, ComplexType output) {
+		// perhaps too broad...
+		sql = sql.replaceAll("\\btrue\\b", "1");
+		sql = sql.replaceAll("\\bfalse\\b", "0");
 		return sql;
 	}
 
@@ -116,6 +120,14 @@ public class Oracle implements SQLDialect {
 				if (value == null || value > 0) {
 					builder.append(" not null");
 				}
+			}
+			
+			Value<Boolean> property = child.getProperty(UniqueProperty.getInstance());
+			if (property != null && property.getValue()) {
+				if (!constraints.toString().isEmpty()) {
+					constraints.append(",\n");
+				}
+				constraints.append("\tconstraint " + EAIRepositoryUtils.uncamelify(child.getName()) + "_unique unique (" + child.getName() + ")");
 			}
 		}
 		if (!constraints.toString().isEmpty()) {
