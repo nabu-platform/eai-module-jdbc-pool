@@ -2,14 +2,12 @@ package be.nabu.eai.module.jdbc.pool;
 
 import java.io.IOException;
 import java.util.Properties;
+import java.util.Set;
 
 import javax.sql.DataSource;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import com.zaxxer.hikari.HikariConfig;
-import com.zaxxer.hikari.HikariDataSource;
 
 import be.nabu.eai.repository.api.Repository;
 import be.nabu.eai.repository.artifacts.jaxb.JAXBArtifact;
@@ -17,15 +15,32 @@ import be.nabu.libs.artifacts.api.StartableArtifact;
 import be.nabu.libs.artifacts.api.StoppableArtifact;
 import be.nabu.libs.metrics.api.MetricInstance;
 import be.nabu.libs.resources.api.ResourceContainer;
+import be.nabu.libs.services.api.DefinedService;
+import be.nabu.libs.services.api.ServiceInstance;
+import be.nabu.libs.services.api.ServiceInterface;
+import be.nabu.libs.services.jdbc.JDBCService;
 import be.nabu.libs.services.jdbc.api.DataSourceWithDialectProviderArtifact;
 import be.nabu.libs.services.jdbc.api.SQLDialect;
+import be.nabu.libs.types.SimpleTypeWrapperFactory;
+import be.nabu.libs.types.api.ComplexType;
+import be.nabu.libs.types.api.SimpleTypeWrapper;
+import be.nabu.libs.types.base.ComplexElementImpl;
+import be.nabu.libs.types.base.SimpleElementImpl;
+import be.nabu.libs.types.base.ValueImpl;
+import be.nabu.libs.types.java.BeanResolver;
+import be.nabu.libs.types.properties.MinOccursProperty;
+import be.nabu.libs.types.structure.Structure;
 
-public class JDBCPoolArtifact extends JAXBArtifact<JDBCPoolConfiguration> implements StartableArtifact, StoppableArtifact, DataSourceWithDialectProviderArtifact {
+import com.zaxxer.hikari.HikariConfig;
+import com.zaxxer.hikari.HikariDataSource;
+
+public class JDBCPoolArtifact extends JAXBArtifact<JDBCPoolConfiguration> implements StartableArtifact, StoppableArtifact, DataSourceWithDialectProviderArtifact, DefinedService {
 
 	private HikariDataSource dataSource;
 	private Logger logger = LoggerFactory.getLogger(getClass());
 	private SQLDialect dialect;
 	private MetricInstance metrics;
+	private Structure input, output;
 	
 	public JDBCPoolArtifact(String id, ResourceContainer<?> directory, Repository repository) {
 		super(id, directory, repository, "jdbcPool.xml", JDBCPoolConfiguration.class);
@@ -131,5 +146,55 @@ public class JDBCPoolArtifact extends JAXBArtifact<JDBCPoolConfiguration> implem
 		catch (IOException e) {
 			throw new RuntimeException(e);
 		}
+	}
+
+	@Override
+	public ServiceInterface getServiceInterface() {
+		if (input == null) {
+			synchronized(this) {
+				if (input == null) {
+					Structure input = new Structure();
+					input.setName("input");
+					SimpleTypeWrapper wrapper = SimpleTypeWrapperFactory.getInstance().getWrapper();
+					input.add(new SimpleElementImpl<String>("sql", wrapper.wrap(String.class), input));
+					input.add(new SimpleElementImpl<String>("resultType", wrapper.wrap(String.class), input, new ValueImpl<Integer>(MinOccursProperty.getInstance(), 0)));
+					input.add(new SimpleElementImpl<String>(JDBCService.TRANSACTION, wrapper.wrap(String.class), input, new ValueImpl<Integer>(MinOccursProperty.getInstance(), 0)));
+					input.add(new SimpleElementImpl<Integer>(JDBCService.OFFSET, wrapper.wrap(Integer.class), input, new ValueImpl<Integer>(MinOccursProperty.getInstance(), 0)));
+					input.add(new SimpleElementImpl<Integer>(JDBCService.LIMIT, wrapper.wrap(Integer.class), input, new ValueImpl<Integer>(MinOccursProperty.getInstance(), 0)));
+//					input.add(new ComplexElementImpl(JDBCService.PARAMETERS, (ComplexType) BeanResolver.getInstance().resolve(KeyValuePair.class), input, 
+//						new ValueImpl<Integer>(MinOccursProperty.getInstance(), 0),
+//						new ValueImpl<Integer>(MaxOccursProperty.getInstance(), 0)));
+					Structure output = new Structure();
+					output.setName("output");
+					output.add(new ComplexElementImpl(JDBCService.RESULTS, (ComplexType) BeanResolver.getInstance().resolve(Object.class), output, new ValueImpl<Integer>(MinOccursProperty.getInstance(), 0)));
+					this.output = output;
+					this.input = input;
+				}
+			}
+		}
+		return new ServiceInterface() {
+			@Override
+			public ComplexType getInputDefinition() {
+				return input;
+			}
+			@Override
+			public ComplexType getOutputDefinition() {
+				return output;
+			}
+			@Override
+			public ServiceInterface getParent() {
+				return null;
+			}
+		};
+	}
+
+	@Override
+	public ServiceInstance newInstance() {
+		return new JDBCPoolServiceInstance(this);
+	}
+
+	@Override
+	public Set<String> getReferences() {
+		return null;
 	}
 }
