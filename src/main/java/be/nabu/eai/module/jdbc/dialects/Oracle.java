@@ -91,6 +91,18 @@ public class Oracle implements SQLDialect {
 			if (child.getType() instanceof ComplexType) {
 				builder.append("\t" + EAIRepositoryUtils.uncamelify(child.getName()) + "_id uuid");
 			}
+			// differentiate between dates
+			else if (Date.class.isAssignableFrom(((SimpleType<?>) child.getType()).getInstanceClass())) {
+				Value<String> property = child.getProperty(FormatProperty.getInstance());
+				String format = property == null ? "dateTime" : property.getValue();
+				if (format.equals("dateTime")) {
+					format = "timestamp";
+				}
+				else if (!format.equals("date") && !format.equals("time")) {
+					format = "timestamp";
+				}
+				builder.append("\t" + EAIRepositoryUtils.uncamelify(child.getName())).append(" ").append(format);
+			}
 			else {
 				builder.append("\t" + EAIRepositoryUtils.uncamelify(child.getName())).append(" ")
 					.append(getPredefinedSQLType(((SimpleType<?>) child.getType()).getInstanceClass()));
@@ -212,7 +224,15 @@ public class Oracle implements SQLDialect {
 				}
 				else {
 					boolean closeQuote = false;
-					if (Date.class.isAssignableFrom(instanceClass)) {
+					if (Boolean.class.isAssignableFrom(instanceClass)) {
+						if ((Boolean) value) {
+							valueBuilder.append("1");
+						}
+						else {
+							valueBuilder.append("0");
+						}
+					}
+					else if (Date.class.isAssignableFrom(instanceClass)) {
 						Value<String> property = element.getProperty(FormatProperty.getInstance());
 						if (property != null && !property.getValue().equals("timestamp") && !property.getValue().contains("S") && !property.getValue().equals("time")) {
 							valueBuilder.append("to_timestamp('").append(timestampFormatter.format(value)).append("', 'yyyy-mm-dd hh24:mi:ss.ff3')");

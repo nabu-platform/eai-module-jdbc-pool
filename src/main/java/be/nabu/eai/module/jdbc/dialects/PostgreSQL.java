@@ -119,6 +119,18 @@ public class PostgreSQL implements SQLDialect {
 			if (child.getType() instanceof ComplexType) {
 				builder.append("\t" + EAIRepositoryUtils.uncamelify(child.getName()) + "_id uuid");
 			}
+			// differentiate between dates
+			else if (Date.class.isAssignableFrom(((SimpleType<?>) child.getType()).getInstanceClass())) {
+				Value<String> property = child.getProperty(FormatProperty.getInstance());
+				String format = property == null ? "dateTime" : property.getValue();
+				if (format.equals("dateTime")) {
+					format = "timestamp";
+				}
+				else if (!format.equals("date") && !format.equals("time")) {
+					format = "timestamp";
+				}
+				builder.append("\t" + EAIRepositoryUtils.uncamelify(child.getName())).append(" ").append(format);
+			}
 			else {
 				builder.append("\t" + EAIRepositoryUtils.uncamelify(child.getName())).append(" ")
 					.append(getPredefinedSQLType(((SimpleType<?>) child.getType()).getInstanceClass()));
