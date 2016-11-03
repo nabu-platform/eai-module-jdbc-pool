@@ -57,7 +57,7 @@ public class PostgreSQL implements SQLDialect {
 			}
 			String name = matcher.group().substring(1);
 			Element<?> element = input.get(name);
-			if (element.getType() instanceof SimpleType) {
+			if (element != null && element.getType() instanceof SimpleType) {
 				SimpleType<?> type = (SimpleType<?>) element.getType();
 				String postgreType = null;
 				if (UUID.class.isAssignableFrom(type.getInstanceClass())) {
