@@ -21,6 +21,7 @@ public class JDBCPoolConfiguration {
 	private Boolean enableMetrics;
 	
 	@EnvironmentSpecific	// you can use a different database
+	@ValueEnumerator(enumerator = SQLDriverEnumerator.class)
 	@NotNull
 	public String getDriverClassName() {
 		return driverClassName;
