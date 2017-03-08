@@ -87,64 +87,75 @@ public class JDBCPoolServiceInstance implements ServiceInstance {
 			
 			ComplexContent output = pool.getServiceInterface().getOutputDefinition().newInstance();
 			Statement statement = connection.createStatement();
-			if (sql.trim().toLowerCase().startsWith("select")) {
-				if (!nativeLimit && limit != null) {
-					statement.setMaxRows(offset != null ? offset + limit : limit);
-				}
-				ResultSet executeQuery = statement.executeQuery(sql);
-				ComplexType type = content.get("resultType") == null ? null : (ComplexType) DefinedTypeResolverFactory.getInstance().getResolver().resolve((String) content.get("resultType"));
-				if (type == null) {
-					Structure structure = new Structure();
-					structure.setName("result");
-					ResultSetMetaData metaData = executeQuery.getMetaData();
-					for (int i = 1; i <= metaData.getColumnCount(); i++) {
-						String columnClassName = metaData.getColumnClassName(i);
-						try {
-							Class<?> clazz = Thread.currentThread().getContextClassLoader().loadClass(columnClassName);
-							if (java.util.Date.class.isAssignableFrom(clazz)) {
-								clazz = java.util.Date.class;
+			try {
+				if (sql.trim().toLowerCase().startsWith("select")) {
+					if (!nativeLimit && limit != null) {
+						statement.setMaxRows(offset != null ? offset + limit : limit);
+					}
+					ResultSet executeQuery = statement.executeQuery(sql);
+					try {
+						ComplexType type = content.get("resultType") == null ? null : (ComplexType) DefinedTypeResolverFactory.getInstance().getResolver().resolve((String) content.get("resultType"));
+						if (type == null) {
+							Structure structure = new Structure();
+							structure.setName("result");
+							ResultSetMetaData metaData = executeQuery.getMetaData();
+							for (int i = 1; i <= metaData.getColumnCount(); i++) {
+								String columnClassName = metaData.getColumnClassName(i);
+								try {
+									Class<?> clazz = Thread.currentThread().getContextClassLoader().loadClass(columnClassName);
+									if (java.util.Date.class.isAssignableFrom(clazz)) {
+										clazz = java.util.Date.class;
+									}
+									DefinedSimpleType<?> wrap = SimpleTypeWrapperFactory.getInstance().getWrapper().wrap(clazz);
+									if (wrap == null) {
+										throw new RuntimeException("No simple type found for: " + clazz);
+									}
+									structure.add(new SimpleElementImpl(metaData.getColumnLabel(i).replaceAll("[^\\w]+", ""), wrap, structure, new ValueImpl<Integer>(MinOccursProperty.getInstance(), 0)));
+									type = structure;
+								}
+								catch (Exception e) {
+									throw new RuntimeException("Unknown result set class: " + columnClassName, e);
+								}
 							}
-							DefinedSimpleType<?> wrap = SimpleTypeWrapperFactory.getInstance().getWrapper().wrap(clazz);
-							if (wrap == null) {
-								throw new RuntimeException("No simple type found for: " + clazz);
+						}
+						DefinedStructure root = new DefinedStructure();
+						root.setId("$generated");
+						root.setName("root");
+						root.add(new ComplexElementImpl(JDBCService.RESULTS, type, root, new ValueImpl<Integer>(MaxOccursProperty.getInstance(), 0),  new ValueImpl<Integer>(MinOccursProperty.getInstance(), 0)));
+						List results = new ArrayList();
+						int recordCounter = 0;
+						while (executeQuery.next()) {
+							// if we don't have a native (dialect) limit but we did set an offset, do it programmatically
+							if (!nativeLimit && offset != null) {
+								recordCounter++;
+								if (recordCounter < offset) {
+									continue;
+								}
 							}
-							structure.add(new SimpleElementImpl(metaData.getColumnLabel(i).replaceAll("[^\\w]+", ""), wrap, structure, new ValueImpl<Integer>(MinOccursProperty.getInstance(), 0)));
-							type = structure;
+							ComplexContent result = type.newInstance();
+							int column = 1;
+							for (Element<?> child : TypeUtils.getAllChildren(type)) {
+								result.set(child.getName(), executeQuery.getObject(column++));
+							}
+							results.add(result);
 						}
-						catch (Exception e) {
-							throw new RuntimeException("Unknown result set class: " + columnClassName, e);
-						}
+						StructureInstance rootInstance = root.newInstance();
+						rootInstance.set(JDBCService.RESULTS, results);
+						output.set(JDBCService.RESULTS, rootInstance);
+					}
+					finally {
+						executeQuery.close();
 					}
 				}
-				DefinedStructure root = new DefinedStructure();
-				root.setId("$generated");
-				root.setName("root");
-				root.add(new ComplexElementImpl(JDBCService.RESULTS, type, root, new ValueImpl<Integer>(MaxOccursProperty.getInstance(), 0),  new ValueImpl<Integer>(MinOccursProperty.getInstance(), 0)));
-				List results = new ArrayList();
-				int recordCounter = 0;
-				while (executeQuery.next()) {
-					// if we don't have a native (dialect) limit but we did set an offset, do it programmatically
-					if (!nativeLimit && offset != null) {
-						recordCounter++;
-						if (recordCounter < offset) {
-							continue;
-						}
-					}
-					ComplexContent result = type.newInstance();
-					int column = 1;
-					for (Element<?> child : TypeUtils.getAllChildren(type)) {
-						result.set(child.getName(), executeQuery.getObject(column++));
-					}
-					results.add(result);
+				else {
+					output.set(JDBCService.RESULTS, statement.executeUpdate(sql));
 				}
-				StructureInstance rootInstance = root.newInstance();
-				rootInstance.set(JDBCService.RESULTS, results);
-				output.set(JDBCService.RESULTS, rootInstance);
+				return output;
+			
 			}
-			else {
-				output.set(JDBCService.RESULTS, statement.executeUpdate(sql));
+			finally {
+				statement.close();
 			}
-			return output;
 		}	
 		catch (SQLException e) {
 			while (e.getNextException() != null) {
