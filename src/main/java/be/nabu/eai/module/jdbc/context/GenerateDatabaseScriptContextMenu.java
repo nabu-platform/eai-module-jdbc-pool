@@ -150,6 +150,22 @@ public class GenerateDatabaseScriptContextMenu implements EntryContextMenuProvid
 				});
 				insert.getItems().add(insertItem);
 			}
+			Menu delete = new Menu("Delete DML");
+			delete.addEventHandler(ActionEvent.ANY, new EventHandler<ActionEvent>() {
+				@Override
+				public void handle(ActionEvent arg0) {
+					try {
+						ComplexType type = (ComplexType) entry.getNode().getArtifact();
+						// we need to make sure that everything with a foreign key to this element is deleted first
+						StringBuilder builder = new StringBuilder();
+						// TODO: generate a script (with or without id?) that you can use in the correct order to delete something
+						// if without id, might as well drop...?
+					}
+					catch (Exception e) {
+						MainController.getInstance().notify(e);
+					}
+				}
+			});
 			menu.getItems().addAll(create, insert);
 			return menu;
 		}
