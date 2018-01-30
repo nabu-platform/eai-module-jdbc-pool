@@ -1,6 +1,8 @@
 package be.nabu.eai.module.jdbc.pool;
 
 import java.io.IOException;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.util.Properties;
 import java.util.Set;
 
@@ -13,7 +15,9 @@ import be.nabu.eai.repository.api.Repository;
 import be.nabu.eai.repository.artifacts.jaxb.JAXBArtifact;
 import be.nabu.libs.artifacts.api.StartableArtifact;
 import be.nabu.libs.artifacts.api.StoppableArtifact;
+import be.nabu.libs.artifacts.api.TunnelableArtifact;
 import be.nabu.libs.metrics.api.MetricInstance;
+import be.nabu.libs.resources.URIUtils;
 import be.nabu.libs.resources.api.ResourceContainer;
 import be.nabu.libs.services.api.DefinedService;
 import be.nabu.libs.services.api.ServiceInstance;
@@ -34,7 +38,7 @@ import be.nabu.libs.types.structure.Structure;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 
-public class JDBCPoolArtifact extends JAXBArtifact<JDBCPoolConfiguration> implements StartableArtifact, StoppableArtifact, DataSourceWithDialectProviderArtifact, DefinedService {
+public class JDBCPoolArtifact extends JAXBArtifact<JDBCPoolConfiguration> implements StartableArtifact, StoppableArtifact, DataSourceWithDialectProviderArtifact, DefinedService, TunnelableArtifact {
 
 	private HikariDataSource dataSource;
 	private Logger logger = LoggerFactory.getLogger(getClass());
@@ -196,5 +200,47 @@ public class JDBCPoolArtifact extends JAXBArtifact<JDBCPoolConfiguration> implem
 	@Override
 	public Set<String> getReferences() {
 		return null;
+	}
+
+	@Override
+	public String getTunnelHost() {
+		try {
+			if (getConfig().getJdbcUrl() == null) {
+				return null;
+			}
+			String host = getUri().getHost();
+			// defaults to the local host
+			return host == null ? "localhost" : host;
+		}
+		catch (URISyntaxException e) {
+			throw new RuntimeException(e);
+		}
+	}
+
+	private URI getUri() throws URISyntaxException {
+		URI uri = new URI(URIUtils.encodeURI(getConfig().getJdbcUrl()));
+		if (uri.getScheme().equalsIgnoreCase("jdbc")) {
+			uri = new URI(URIUtils.encodeURI(uri.getSchemeSpecificPart()));
+		}
+		return uri;
+	}
+
+	@Override
+	public Integer getTunnelPort() {
+		try {
+			Integer port = getUri().getPort();
+			if ((port == null || port < 0) && getConfig().getDialect() != null) {
+				try {
+					port = getConfig().getDialect().newInstance().getDefaultPort();
+				}
+				catch (Exception e) {
+					throw new RuntimeException(e);
+				}
+			}
+			return port;
+		}
+		catch (URISyntaxException e) {
+			throw new RuntimeException(e);
+		}
 	}
 }
