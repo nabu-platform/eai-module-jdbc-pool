@@ -1,5 +1,7 @@
 package be.nabu.eai.module.jdbc.pool;
 
+import java.util.List;
+
 import javax.validation.constraints.NotNull;
 import javax.xml.bind.annotation.XmlRootElement;
 import javax.xml.bind.annotation.XmlType;
@@ -8,17 +10,20 @@ import javax.xml.bind.annotation.adapters.XmlJavaTypeAdapter;
 import be.nabu.eai.api.EnvironmentSpecific;
 import be.nabu.eai.api.ValueEnumerator;
 import be.nabu.eai.repository.util.ClassAdapter;
+import be.nabu.libs.services.jdbc.api.DataSourceWithAffixes.AffixMapping;
 import be.nabu.libs.services.jdbc.api.SQLDialect;
+import be.nabu.utils.security.EncryptionXmlAdapter;
 
 @XmlRootElement(name = "jdbcPool")
-@XmlType(propOrder = { "driverClassName", "jdbcUrl", "username", "password", "connectionTimeout", "idleTimeout", "maximumPoolSize", "minimumIdle", "autoCommit", "maxLifetime", "dialect", "enableMetrics" })
+@XmlType(propOrder = { "driverClassName", "jdbcUrl", "username", "password", "context", "connectionTimeout", "idleTimeout", "maximumPoolSize", "minimumIdle", "autoCommit", "maxLifetime", "dialect", "enableMetrics", "affixes" })
 public class JDBCPoolConfiguration {
-	private String driverClassName, jdbcUrl, username, password;
+	private String driverClassName, jdbcUrl, username, password, context;
 	private Long connectionTimeout, idleTimeout, maxLifetime;
 	private Integer maximumPoolSize, minimumIdle;
 	private Boolean autoCommit;
 	private Class<SQLDialect> dialect;
 	private Boolean enableMetrics;
+	private List<AffixMapping> affixes;
 	
 	@EnvironmentSpecific	// you can use a different database
 	@ValueEnumerator(enumerator = SQLDriverEnumerator.class)
@@ -48,6 +53,7 @@ public class JDBCPoolConfiguration {
 	}
 	
 	@EnvironmentSpecific
+	@XmlJavaTypeAdapter(value=EncryptionXmlAdapter.class)
 	public String getPassword() {
 		return password;
 	}
@@ -114,5 +120,19 @@ public class JDBCPoolConfiguration {
 	}
 	public void setEnableMetrics(Boolean enableMetrics) {
 		this.enableMetrics = enableMetrics;
+	}
+	
+	public List<AffixMapping> getAffixes() {
+		return affixes;
+	}
+	public void setAffixes(List<AffixMapping> affixes) {
+		this.affixes = affixes;
+	}
+	
+	public String getContext() {
+		return context;
+	}
+	public void setContext(String context) {
+		this.context = context;
 	}
 }

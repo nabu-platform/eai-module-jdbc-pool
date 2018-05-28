@@ -4,12 +4,12 @@ import java.io.IOException;
 import java.util.List;
 
 import be.nabu.eai.developer.MainController;
-import be.nabu.eai.developer.managers.base.BaseJAXBGUIManager;
+import be.nabu.eai.developer.managers.base.BaseJAXBComplexGUIManager;
 import be.nabu.eai.repository.resources.RepositoryEntry;
 import be.nabu.libs.property.api.Property;
 import be.nabu.libs.property.api.Value;
 
-public class JDBCPoolGUIManager extends BaseJAXBGUIManager<JDBCPoolConfiguration, JDBCPoolArtifact> {
+public class JDBCPoolGUIManager extends BaseJAXBComplexGUIManager<JDBCPoolConfiguration, JDBCPoolArtifact> {
 
 	public JDBCPoolGUIManager() {
 		super("JDBC Pool", JDBCPoolArtifact.class, new JDBCPoolManager(), JDBCPoolConfiguration.class);

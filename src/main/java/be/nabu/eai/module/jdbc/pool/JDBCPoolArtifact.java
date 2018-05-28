@@ -3,6 +3,7 @@ package be.nabu.eai.module.jdbc.pool;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.util.List;
 import java.util.Properties;
 import java.util.Set;
 
@@ -23,6 +24,7 @@ import be.nabu.libs.services.api.DefinedService;
 import be.nabu.libs.services.api.ServiceInstance;
 import be.nabu.libs.services.api.ServiceInterface;
 import be.nabu.libs.services.jdbc.JDBCService;
+import be.nabu.libs.services.jdbc.api.DataSourceWithAffixes;
 import be.nabu.libs.services.jdbc.api.DataSourceWithDialectProviderArtifact;
 import be.nabu.libs.services.jdbc.api.SQLDialect;
 import be.nabu.libs.types.SimpleTypeWrapperFactory;
@@ -38,7 +40,7 @@ import be.nabu.libs.types.structure.Structure;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 
-public class JDBCPoolArtifact extends JAXBArtifact<JDBCPoolConfiguration> implements StartableArtifact, StoppableArtifact, DataSourceWithDialectProviderArtifact, DefinedService, TunnelableArtifact {
+public class JDBCPoolArtifact extends JAXBArtifact<JDBCPoolConfiguration> implements StartableArtifact, StoppableArtifact, DataSourceWithDialectProviderArtifact, DefinedService, TunnelableArtifact, DataSourceWithAffixes {
 
 	private HikariDataSource dataSource;
 	private Logger logger = LoggerFactory.getLogger(getClass());
@@ -243,4 +245,15 @@ public class JDBCPoolArtifact extends JAXBArtifact<JDBCPoolConfiguration> implem
 			throw new RuntimeException(e);
 		}
 	}
+
+	@Override
+	public List<AffixMapping> getAffixes() {
+		return getConfig().getAffixes();
+	}
+
+	@Override
+	public String getContext() {
+		return getConfig().getContext();
+	}
+	
 }
