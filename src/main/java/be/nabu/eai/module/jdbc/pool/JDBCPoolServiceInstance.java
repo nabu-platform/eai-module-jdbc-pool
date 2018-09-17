@@ -89,7 +89,7 @@ public class JDBCPoolServiceInstance implements ServiceInstance {
 			Statement statement = connection.createStatement();
 			try {
 				// "show" can be used in postgres to get some parameters
-				if (sql.trim().toLowerCase().startsWith("select") || sql.trim().toLowerCase().startsWith("show")) {
+				if (sql.trim().toLowerCase().startsWith("select") || sql.trim().toLowerCase().startsWith("show") || sql.trim().toLowerCase().startsWith("explain")) {
 					if (!nativeLimit && limit != null) {
 						statement.setMaxRows((int) (offset != null ? offset + limit : limit));
 					}
