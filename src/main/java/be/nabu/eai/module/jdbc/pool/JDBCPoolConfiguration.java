@@ -8,14 +8,18 @@ import javax.xml.bind.annotation.XmlType;
 import javax.xml.bind.annotation.adapters.XmlJavaTypeAdapter;
 
 import be.nabu.eai.api.EnvironmentSpecific;
+import be.nabu.eai.api.InterfaceFilter;
 import be.nabu.eai.api.ValueEnumerator;
+import be.nabu.eai.repository.jaxb.ArtifactXMLAdapter;
 import be.nabu.eai.repository.util.ClassAdapter;
+import be.nabu.libs.services.api.DefinedService;
 import be.nabu.libs.services.jdbc.api.DataSourceWithAffixes.AffixMapping;
 import be.nabu.libs.services.jdbc.api.SQLDialect;
 import be.nabu.utils.security.EncryptionXmlAdapter;
 
 @XmlRootElement(name = "jdbcPool")
-@XmlType(propOrder = { "driverClassName", "jdbcUrl", "username", "password", "context", "connectionTimeout", "idleTimeout", "maximumPoolSize", "minimumIdle", "autoCommit", "maxLifetime", "dialect", "enableMetrics", "affixes" })
+@XmlType(propOrder = { "driverClassName", "jdbcUrl", "username", "password", "context", "connectionTimeout", "idleTimeout", "maximumPoolSize", "minimumIdle", "autoCommit", "maxLifetime", "dialect", "enableMetrics", 
+	"defaultLanguage", "translationGet", "translationSet", "affixes" })
 public class JDBCPoolConfiguration {
 	private String driverClassName, jdbcUrl, username, password, context;
 	private Long connectionTimeout, idleTimeout, maxLifetime;
@@ -24,6 +28,9 @@ public class JDBCPoolConfiguration {
 	private Class<SQLDialect> dialect;
 	private Boolean enableMetrics;
 	private List<AffixMapping> affixes;
+	
+	private String defaultLanguage;
+	private DefinedService translationGet, translationSet;
 	
 	@EnvironmentSpecific	// you can use a different database
 	@ValueEnumerator(enumerator = SQLDriverEnumerator.class)
@@ -135,4 +142,32 @@ public class JDBCPoolConfiguration {
 	public void setContext(String context) {
 		this.context = context;
 	}
+	
+	
+	public String getDefaultLanguage() {
+		return defaultLanguage;
+	}
+	public void setDefaultLanguage(String defaultLanguage) {
+		this.defaultLanguage = defaultLanguage;
+	}
+	
+	@XmlJavaTypeAdapter(value = ArtifactXMLAdapter.class)
+	@InterfaceFilter(implement = "be.nabu.libs.services.jdbc.api.JDBCTranslator.get")
+	public DefinedService getTranslationGet() {
+		return translationGet;
+	}
+	public void setTranslationGet(DefinedService translationGet) {
+		this.translationGet = translationGet;
+	}
+	
+	@XmlJavaTypeAdapter(value = ArtifactXMLAdapter.class)
+	@InterfaceFilter(implement = "be.nabu.libs.services.jdbc.api.JDBCTranslator.set")
+	public DefinedService getTranslationSet() {
+		return translationSet;
+	}
+	public void setTranslationSet(DefinedService translationSet) {
+		this.translationSet = translationSet;
+	}
+	
+	
 }

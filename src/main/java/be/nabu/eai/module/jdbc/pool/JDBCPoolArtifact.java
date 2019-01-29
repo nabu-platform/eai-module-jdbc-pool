@@ -14,6 +14,7 @@ import org.slf4j.LoggerFactory;
 
 import be.nabu.eai.repository.api.Repository;
 import be.nabu.eai.repository.artifacts.jaxb.JAXBArtifact;
+import be.nabu.eai.repository.util.SystemPrincipal;
 import be.nabu.libs.artifacts.api.StartableArtifact;
 import be.nabu.libs.artifacts.api.StoppableArtifact;
 import be.nabu.libs.artifacts.api.TunnelableArtifact;
@@ -26,7 +27,10 @@ import be.nabu.libs.services.api.ServiceInterface;
 import be.nabu.libs.services.jdbc.JDBCService;
 import be.nabu.libs.services.jdbc.api.DataSourceWithAffixes;
 import be.nabu.libs.services.jdbc.api.DataSourceWithDialectProviderArtifact;
+import be.nabu.libs.services.jdbc.api.DataSourceWithTranslator;
+import be.nabu.libs.services.jdbc.api.JDBCTranslator;
 import be.nabu.libs.services.jdbc.api.SQLDialect;
+import be.nabu.libs.services.pojo.POJOUtils;
 import be.nabu.libs.types.SimpleTypeWrapperFactory;
 import be.nabu.libs.types.api.ComplexType;
 import be.nabu.libs.types.api.SimpleTypeWrapper;
@@ -40,13 +44,14 @@ import be.nabu.libs.types.structure.Structure;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 
-public class JDBCPoolArtifact extends JAXBArtifact<JDBCPoolConfiguration> implements StartableArtifact, StoppableArtifact, DataSourceWithDialectProviderArtifact, DefinedService, TunnelableArtifact, DataSourceWithAffixes {
+public class JDBCPoolArtifact extends JAXBArtifact<JDBCPoolConfiguration> implements StartableArtifact, StoppableArtifact, DataSourceWithDialectProviderArtifact, DefinedService, TunnelableArtifact, DataSourceWithAffixes, DataSourceWithTranslator {
 
 	private HikariDataSource dataSource;
 	private Logger logger = LoggerFactory.getLogger(getClass());
 	private SQLDialect dialect;
 	private MetricInstance metrics;
 	private Structure input, output;
+	private JDBCTranslator translator;
 	
 	public JDBCPoolArtifact(String id, ResourceContainer<?> directory, Repository repository) {
 		super(id, directory, repository, "jdbcPool.xml", JDBCPoolConfiguration.class);
@@ -254,6 +259,25 @@ public class JDBCPoolArtifact extends JAXBArtifact<JDBCPoolConfiguration> implem
 	@Override
 	public String getContext() {
 		return getConfig().getContext();
+	}
+
+	@Override
+	public JDBCTranslator getTranslator() {
+		if (translator == null) {
+			translator = getConfig().getTranslationGet() != null && getConfig().getTranslationSet() != null
+				? POJOUtils.newProxy(
+					JDBCTranslator.class,
+					getRepository(), 
+					SystemPrincipal.ROOT,
+					getConfig().getTranslationGet(), getConfig().getTranslationSet()
+				) : null;
+		}
+		return translator;
+	}
+
+	@Override
+	public String getDefaultLanguage() {
+		return getConfig().getDefaultLanguage();
 	}
 	
 }
