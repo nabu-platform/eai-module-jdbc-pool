@@ -114,7 +114,7 @@ public class JDBCPoolArtifact extends JAXBArtifact<JDBCPoolConfiguration> implem
 		setIfNotNull(properties, "idleTimeout", getConfiguration().getIdleTimeout());
 		setIfNotNull(properties, "maximumPoolSize", getConfiguration().getMaximumPoolSize());
 		setIfNotNull(properties, "minimumIdle", getConfiguration().getMinimumIdle());
-		setIfNotNull(properties, "autoCommit", getConfiguration().getAutoCommit());
+		setIfNotNull(properties, "autoCommit", getConfiguration().getAutoCommit() == null ? false : getConfiguration().getAutoCommit());
 		setIfNotNull(properties, "maxLifetime", getConfiguration().getMaxLifetime());
 		properties.put("poolName", getId());
 		return properties;
