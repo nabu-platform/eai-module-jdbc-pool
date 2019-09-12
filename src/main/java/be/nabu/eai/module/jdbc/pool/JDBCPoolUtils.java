@@ -95,23 +95,34 @@ public class JDBCPoolUtils {
 							output.write("-- " + e.getMessage().trim() + "\n");
 						}
 						output.write(sql.trim() + "\n\n");
+						logger.warn("Could not process statement: " + sql, e);
 						failed++;
 					}
 					finally {
-						statement.close();
+						try {
+							statement.close();
+						}
+						catch(Exception e) {
+							// ignore...
+						}
 					}
-					connection.commit();
-					String message = "";
-					if (sql.trim().toLowerCase().startsWith("insert")) {
-						message = sql.trim().toLowerCase().split("\\(")[0].trim();
+					try {
+						String message = "";
+						connection.commit();
+						if (sql.trim().toLowerCase().startsWith("insert")) {
+							message = sql.trim().toLowerCase().split("\\(")[0].trim();
+						}
+						else if (sql.trim().toLowerCase().startsWith("create")) {
+							message = sql.trim().toLowerCase().split("\\(")[0].trim();
+						}
+						else {
+							message = sql.trim();
+						}
+						logger.info("Status [" + successful + " successful + " + failed + " failed = " + (successful + failed) + "]): " + message + " [" + ((new Date().getTime() - date.getTime()) / 1000) + "s]");
 					}
-					else if (sql.trim().toLowerCase().startsWith("create")) {
-						message = sql.trim().toLowerCase().split("\\(")[0].trim();
+					catch (Exception e) {
+						logger.error("Could not commit", e);
 					}
-					else {
-						message = sql.trim();
-					}
-					logger.info("Status [" + successful + " successful + " + failed + " failed = " + (successful + failed) + "]): " + message + " [" + ((new Date().getTime() - date.getTime()) / 1000) + "s]");
 				}
 			}
 		}
