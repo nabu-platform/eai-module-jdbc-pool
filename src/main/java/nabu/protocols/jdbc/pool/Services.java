@@ -130,7 +130,7 @@ public class Services {
 				DatastoreOutputStream streamable = nabu.frameworks.datastore.Services.streamable(ServiceRuntime.getRuntime(), context, "dump.sql", "text/sql");
 				OutputStreamWriter writer = new OutputStreamWriter(streamable, Charset.forName("UTF-8"));
 				try {
-					SQLDialect dialect = details.getDialect().newInstance();
+					SQLDialect dialect = details == null || details.getDialect() == null ? resolve.getDialect() : details.getDialect().newInstance();
 					boolean includeDdl = details.getIncludeDdl() != null && details.getIncludeDdl();
 					boolean includeDml = details.getIncludeDml() != null && details.getIncludeDml();
 					JDBCPoolUtils.dump(connection, null, schemaPattern, tablePattern, writer, dialect, includeDdl, includeDml, details.getTableBlacklistRegex(), details.getTableWhitelistRegex(), details.getMappings());
