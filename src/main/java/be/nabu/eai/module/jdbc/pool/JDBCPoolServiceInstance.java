@@ -8,6 +8,7 @@ import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.List;
 
+import be.nabu.libs.converter.ConverterFactory;
 import be.nabu.libs.services.api.ExecutionContext;
 import be.nabu.libs.services.api.Service;
 import be.nabu.libs.services.api.ServiceException;
@@ -109,7 +110,14 @@ public class JDBCPoolServiceInstance implements ServiceInstance {
 									}
 									DefinedSimpleType<?> wrap = SimpleTypeWrapperFactory.getInstance().getWrapper().wrap(clazz);
 									if (wrap == null) {
-										throw new RuntimeException("No simple type found for: " + clazz);
+										// if we can stringify the result, use strings instead
+										// this is mostly to support database-specific types like oracle.sql.TIMESTAMP
+										if (ConverterFactory.getInstance().getConverter().canConvert(clazz, String.class)) {
+											wrap = SimpleTypeWrapperFactory.getInstance().getWrapper().wrap(String.class);		
+										}
+										if (wrap == null) {
+											throw new RuntimeException("No simple type found for: " + clazz);
+										}
 									}
 									structure.add(new SimpleElementImpl(metaData.getColumnLabel(i).replaceAll("[^\\w]+", ""), wrap, structure, new ValueImpl<Integer>(MinOccursProperty.getInstance(), 0)));
 									type = structure;
