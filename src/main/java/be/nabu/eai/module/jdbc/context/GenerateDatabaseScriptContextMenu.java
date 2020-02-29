@@ -5,6 +5,7 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.concurrent.Future;
 
 import javafx.event.ActionEvent;
 import javafx.event.EventHandler;
@@ -16,12 +17,18 @@ import be.nabu.eai.developer.managers.base.BaseConfigurationGUIManager;
 import be.nabu.eai.developer.managers.util.SimplePropertyUpdater;
 import be.nabu.eai.developer.util.Confirm;
 import be.nabu.eai.developer.util.EAIDeveloperUtils;
+import be.nabu.eai.module.jdbc.pool.JDBCPoolArtifact;
+import be.nabu.eai.module.jdbc.pool.JDBCPoolUtils;
 import be.nabu.eai.developer.util.Confirm.ConfirmType;
 import be.nabu.eai.repository.EAIRepositoryUtils;
+import be.nabu.eai.repository.EAIResourceRepository;
 import be.nabu.eai.repository.api.Entry;
+import be.nabu.eai.repository.util.SystemPrincipal;
 import be.nabu.libs.property.ValueUtils;
 import be.nabu.libs.property.api.Property;
 import be.nabu.libs.property.api.Value;
+import be.nabu.libs.services.api.Service;
+import be.nabu.libs.services.api.ServiceResult;
 import be.nabu.libs.services.jdbc.api.SQLDialect;
 import be.nabu.libs.types.TypeUtils;
 import be.nabu.libs.types.api.ComplexContent;
@@ -33,67 +40,6 @@ import be.nabu.libs.types.properties.CollectionNameProperty;
 import be.nabu.libs.types.properties.ForeignKeyProperty;
 
 public class GenerateDatabaseScriptContextMenu implements EntryContextMenuProvider {
-
-	private static final class ForeignKeyComparator implements Comparator<ComplexType> {
-		
-		private boolean reverse;
-
-		public ForeignKeyComparator(boolean reverse) {
-			this.reverse = reverse;
-		}
-		
-		@Override
-		public int compare(ComplexType o1, ComplexType o2) {
-			int multiplier = reverse ? -1 : 1;
-			boolean hasForeign1 = false;
-			for (Element<?> element : TypeUtils.getAllChildren(o1)) {
-				Value<String> foreign = element.getProperty(ForeignKeyProperty.getInstance());
-				hasForeign1 |= (foreign != null && !foreign.getValue().equals(((DefinedType) o1).getId()));
-				if (foreign != null && foreign.getValue().split(":")[0].equals(((DefinedType) o2).getId())) {
-					return 1 * multiplier;
-				}
-			}
-			boolean hasForeign2 = false;
-			for (Element<?> element : TypeUtils.getAllChildren(o2)) {
-				Value<String> foreign = element.getProperty(ForeignKeyProperty.getInstance());
-				hasForeign2 |= (foreign != null && !foreign.getValue().equals(((DefinedType) o2).getId()));
-				if (foreign != null && foreign.getValue().split(":")[0].equals(((DefinedType) o1).getId())) {
-					return -1 * multiplier;
-				}
-			}
-			if (!hasForeign1 && hasForeign2) {
-				return -1 * multiplier;
-			}
-			else if (hasForeign1 && !hasForeign2) {
-				return 1 * multiplier;
-			}
-			else {
-				return 0;
-			}
-		}
-	}
-	
-	// this does not pick up circular dependencies
-	private static <T> void deepSort(List<T> objects, Comparator<T> comparator) {
-		// do an initial sort
-		Collections.sort(objects, comparator);
-		boolean changed = true;
-		changing: while(changed) {
-			changed = false;
-			for (int i = 0; i < objects.size() - 1; i++) {
-				for (int j = i + 1; j < objects.size(); j++) {
-					int compare = comparator.compare(objects.get(i), objects.get(j));
-					if (compare > 0) {
-						T tmp = objects.get(j);
-						objects.set(j, objects.get(i));
-						objects.set(i, tmp);
-						changed = true;
-						continue changing;
-					}
-				}
-			}
-		}
-	}
 
 	@Override
 	public MenuItem getContext(Entry entry) {
@@ -166,7 +112,76 @@ public class GenerateDatabaseScriptContextMenu implements EntryContextMenuProvid
 					}
 				}
 			});
-			menu.getItems().addAll(create, insert);
+			
+			// add a synchronize option
+			Menu synchronize = new Menu("Synchronize");
+			for (JDBCPoolArtifact artifact : entry.getRepository().getArtifacts(JDBCPoolArtifact.class)) {
+				MenuItem item = new MenuItem(artifact.getId());
+				item.addEventHandler(ActionEvent.ANY, new EventHandler<ActionEvent>() {
+					@Override
+					public void handle(ActionEvent event) {
+						try {
+							if (artifact.getConfig().getManagedTypes() == null) {
+								artifact.getConfig().setManagedTypes(new ArrayList<String>());
+							}
+							if (!artifact.getConfig().getManagedTypes().contains(entry.getNode().getArtifact().getId())) {
+								artifact.getConfig().getManagedTypes().add(entry.getNode().getArtifact().getId());
+								artifact.save(artifact.getDirectory());
+								MainController.getInstance().getServer().getRemote().reload(artifact.getId());
+								MainController.getInstance().getCollaborationClient().updated(artifact.getId(), "Added managed types");
+							}
+							Service service = (Service) EAIResourceRepository.getInstance().resolve("nabu.protocols.jdbc.pool.Services.synchronizeManagedTypes");
+							if (service != null) {
+								ComplexContent input = service.getServiceInterface().getInputDefinition().newInstance();
+								input.set("jdbcPoolId", artifact.getId());
+								input.set("force", true);
+								Future<ServiceResult> run = EAIResourceRepository.getInstance().getServiceRunner().run(service, EAIResourceRepository.getInstance().newExecutionContext(SystemPrincipal.ROOT), input);
+								ServiceResult serviceResult = run.get();
+								if (serviceResult.getException() != null) {
+									MainController.getInstance().notify(serviceResult.getException());
+								}
+							}
+						}
+						catch (Exception e) {
+							MainController.getInstance().notify(e);
+						}
+					}
+				});
+				synchronize.getItems().add(item);
+				synchronize.getItems().sort(new Comparator<MenuItem>() {
+					@Override
+					public int compare(MenuItem o1, MenuItem o2) {
+						return o1.getText().compareTo(o2.getText());
+					}
+				});
+			}
+			menu.getItems().addAll(create, insert, synchronize);
+			
+			return menu;
+		}
+		else if (entry.isNode() && JDBCPoolArtifact.class.isAssignableFrom(entry.getNode().getArtifactClass())) {
+			MenuItem menu = new MenuItem("Synchronize");
+			menu.addEventHandler(ActionEvent.ANY, new EventHandler<ActionEvent>() {
+				@Override
+				public void handle(ActionEvent event) {
+					try {
+						Service service = (Service) EAIResourceRepository.getInstance().resolve("nabu.protocols.jdbc.pool.Services.synchronizeManagedTypes");
+						if (service != null) {
+							ComplexContent input = service.getServiceInterface().getInputDefinition().newInstance();
+							input.set("jdbcPoolId", entry.getId());
+							input.set("force", true);
+							Future<ServiceResult> run = EAIResourceRepository.getInstance().getServiceRunner().run(service, EAIResourceRepository.getInstance().newExecutionContext(SystemPrincipal.ROOT), input);
+							ServiceResult serviceResult = run.get();
+							if (serviceResult.getException() != null) {
+								MainController.getInstance().notify(serviceResult.getException());
+							}
+						}
+					}
+					catch (Exception e) {
+						MainController.getInstance().notify(e);
+					}
+				}
+			});
 			return menu;
 		}
 		else if (!entry.isLeaf()) {
@@ -193,7 +208,7 @@ public class GenerateDatabaseScriptContextMenu implements EntryContextMenuProvid
 										typesToDrop.add((ComplexType) child.getNode().getArtifact());
 									}
 								}
-								deepSort(typesToDrop, new ForeignKeyComparator(false));
+								JDBCPoolUtils.deepSort(typesToDrop, new JDBCPoolUtils.ForeignKeyComparator(false));
 								
 								StringBuilder builder = new StringBuilder();
 								SQLDialect dialect = clazz.newInstance();
@@ -222,7 +237,7 @@ public class GenerateDatabaseScriptContextMenu implements EntryContextMenuProvid
 									typesToDrop.add((ComplexType) child.getNode().getArtifact());
 								}
 							}
-							deepSort(typesToDrop, new ForeignKeyComparator(true));
+							JDBCPoolUtils.deepSort(typesToDrop, new JDBCPoolUtils.ForeignKeyComparator(true));
 							StringBuilder builder = new StringBuilder();
 							for (ComplexType type : typesToDrop) {
 								String value = ValueUtils.getValue(CollectionNameProperty.getInstance(), type.getProperties());
@@ -241,7 +256,62 @@ public class GenerateDatabaseScriptContextMenu implements EntryContextMenuProvid
 					}
 				});
 				
-				menu.getItems().addAll(create, dropItem);
+				// add a synchronize option
+				Menu synchronize = new Menu("Synchronize");
+				for (JDBCPoolArtifact artifact : entry.getRepository().getArtifacts(JDBCPoolArtifact.class)) {
+					MenuItem item = new MenuItem(artifact.getId());
+					item.addEventHandler(ActionEvent.ANY, new EventHandler<ActionEvent>() {
+						@Override
+						public void handle(ActionEvent event) {
+							try {
+								if (artifact.getConfig().getManagedTypes() == null) {
+									artifact.getConfig().setManagedTypes(new ArrayList<String>());
+								}
+								List<ComplexType> typesToSynchronize = new ArrayList<ComplexType>();
+								for (Entry child : entry) {
+									if (child.isNode() && ComplexType.class.isAssignableFrom(child.getNode().getArtifactClass())) {
+										typesToSynchronize.add((ComplexType) child.getNode().getArtifact());
+									}
+								}
+								boolean changed = false;
+								for (ComplexType type : typesToSynchronize) {
+									if (!artifact.getConfig().getManagedTypes().contains(((DefinedType) type).getId())) {
+										artifact.getConfig().getManagedTypes().add(((DefinedType) type).getId());
+										changed = true;
+									}
+								}
+								if (changed) {
+									artifact.save(artifact.getDirectory());
+									MainController.getInstance().getServer().getRemote().reload(artifact.getId());
+									MainController.getInstance().getCollaborationClient().updated(artifact.getId(), "Added managed types");
+								}
+								Service service = (Service) EAIResourceRepository.getInstance().resolve("nabu.protocols.jdbc.pool.Services.synchronizeManagedTypes");
+								if (service != null) {
+									ComplexContent input = service.getServiceInterface().getInputDefinition().newInstance();
+									input.set("jdbcPoolId", artifact.getId());
+									input.set("force", true);
+									Future<ServiceResult> run = EAIResourceRepository.getInstance().getServiceRunner().run(service, EAIResourceRepository.getInstance().newExecutionContext(SystemPrincipal.ROOT), input);
+									ServiceResult serviceResult = run.get();
+									if (serviceResult.getException() != null) {
+										MainController.getInstance().notify(serviceResult.getException());
+									}
+								}
+							}
+							catch (Exception e) {
+								MainController.getInstance().notify(e);
+							}
+						}
+					});
+					synchronize.getItems().add(item);
+					synchronize.getItems().sort(new Comparator<MenuItem>() {
+						@Override
+						public int compare(MenuItem o1, MenuItem o2) {
+							return o1.getText().compareTo(o2.getText());
+						}
+					});
+				}
+				
+				menu.getItems().addAll(create, dropItem, synchronize);
 				return menu;
 			}
 		}

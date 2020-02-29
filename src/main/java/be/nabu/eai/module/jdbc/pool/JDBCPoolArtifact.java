@@ -3,7 +3,15 @@ package be.nabu.eai.module.jdbc.pool;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.sql.Connection;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 
@@ -12,19 +20,24 @@ import javax.sql.DataSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import be.nabu.eai.repository.EAIRepositoryUtils;
 import be.nabu.eai.repository.api.Repository;
 import be.nabu.eai.repository.artifacts.jaxb.JAXBArtifact;
 import be.nabu.eai.repository.util.SystemPrincipal;
+import be.nabu.libs.artifacts.api.Artifact;
 import be.nabu.libs.artifacts.api.StartableArtifact;
 import be.nabu.libs.artifacts.api.StoppableArtifact;
 import be.nabu.libs.artifacts.api.TunnelableArtifact;
 import be.nabu.libs.metrics.api.MetricInstance;
+import be.nabu.libs.property.ValueUtils;
+import be.nabu.libs.property.api.Value;
 import be.nabu.libs.resources.URIUtils;
 import be.nabu.libs.resources.api.ResourceContainer;
 import be.nabu.libs.services.api.DefinedService;
 import be.nabu.libs.services.api.ServiceInstance;
 import be.nabu.libs.services.api.ServiceInterface;
 import be.nabu.libs.services.jdbc.JDBCService;
+import be.nabu.libs.services.jdbc.JDBCUtils;
 import be.nabu.libs.services.jdbc.api.DataSourceWithAffixes;
 import be.nabu.libs.services.jdbc.api.DataSourceWithDialectProviderArtifact;
 import be.nabu.libs.services.jdbc.api.DataSourceWithTranslator;
@@ -33,13 +46,20 @@ import be.nabu.libs.services.jdbc.api.SQLDialect;
 import be.nabu.libs.services.pojo.POJOUtils;
 import be.nabu.libs.types.SimpleTypeWrapperFactory;
 import be.nabu.libs.types.api.ComplexType;
+import be.nabu.libs.types.api.DefinedType;
+import be.nabu.libs.types.api.Element;
 import be.nabu.libs.types.api.SimpleTypeWrapper;
+import be.nabu.libs.types.api.Type;
 import be.nabu.libs.types.base.ComplexElementImpl;
 import be.nabu.libs.types.base.SimpleElementImpl;
 import be.nabu.libs.types.base.ValueImpl;
 import be.nabu.libs.types.java.BeanResolver;
+import be.nabu.libs.types.properties.CollectionNameProperty;
 import be.nabu.libs.types.properties.MinOccursProperty;
+import be.nabu.libs.types.properties.NameProperty;
 import be.nabu.libs.types.structure.Structure;
+import nabu.protocols.jdbc.pool.types.TableColumnDescription;
+import nabu.protocols.jdbc.pool.types.TableDescription;
 
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
@@ -85,9 +105,158 @@ public class JDBCPoolArtifact extends JAXBArtifact<JDBCPoolConfiguration> implem
 				dataSource = new HikariDataSource(hikariConfig);
 			}
 		}
-		catch (IOException e) {
-			logger.error("Could not load properties", e);
+		catch (Exception e) {
+			logger.error("Could not initialize jdbc pool", e);
+			if (dataSource != null) {
+				try {
+					dataSource.close();
+				}
+				catch (Exception f) {
+					// best effort
+				}
+				finally {
+					dataSource = null;
+				}
+			}
 			throw new RuntimeException(e);
+		}
+	}
+	
+	private static String getName(Value<?>...properties) {
+		String value = ValueUtils.getValue(CollectionNameProperty.getInstance(), properties);
+		if (value == null) {
+			value = ValueUtils.getValue(NameProperty.getInstance(), properties);
+		}
+		return EAIRepositoryUtils.uncamelify(value);
+	}
+
+	public void synchronizeTypes(boolean force) throws SQLException {
+		List<String> managedTypes = getConfig().getManagedTypes();
+		if (managedTypes != null && !managedTypes.isEmpty()) {
+			List<ComplexType> typesToSync = new ArrayList<ComplexType>();
+			for (String typeId : managedTypes) {
+				Artifact type = getRepository().resolve(typeId);
+				if (type instanceof ComplexType) {
+					// we need to make sure we create them in the correct order
+					List<ComplexType> localTypes = new ArrayList<ComplexType>();
+					localTypes.add((ComplexType) type);
+					Type parent = ((Type) type).getSuperType();
+					while (parent instanceof ComplexType) {
+						String collectionName = ValueUtils.getValue(CollectionNameProperty.getInstance(), parent.getProperties());
+						if (collectionName != null) {
+							localTypes.add((ComplexType) parent);
+						}
+						parent = parent.getSuperType();
+					}
+					Collections.reverse(localTypes);
+					for (ComplexType localType : localTypes) {
+						if (!typesToSync.contains(localType)) {
+							typesToSync.add(localType);
+						}
+					}
+				}
+			}
+			Connection connection = getDataSource().getConnection();
+			try {
+				JDBCPoolUtils.deepSort(typesToSync, new JDBCPoolUtils.ForeignKeyComparator(false));
+				for (ComplexType type : typesToSync) {
+					try {
+						String tableName = getName(type.getProperties());
+						List<TableDescription> describeTables = JDBCPoolUtils.describeTables(null, null, tableName, getDataSource(), true);
+						// the table exists
+						if (describeTables.size() == 1) {
+							Map<String, Element<?>> children = new LinkedHashMap<String, Element<?>>();
+							for (Element<?> child : JDBCUtils.getFieldsInTable(type)) {
+								children.put(EAIRepositoryUtils.uncamelify(child.getName()), child);
+							}
+							// we remove all the children that already have a column
+							TableDescription description = describeTables.get(0);
+							List<TableColumnDescription> columns = new ArrayList<TableColumnDescription>(description.getColumnDescriptions());
+							Iterator<TableColumnDescription> iterator = columns.iterator();
+							while (iterator.hasNext()) {
+								TableColumnDescription column = iterator.next();
+								if (children.remove(column.getName()) != null) {
+									iterator.remove();
+								}
+							}
+							// any remaining columns are no longer in the data type, if they are optional it doesn't matter, otherwise some action will need to be taken
+							// currently we won't automatically drop a column...yet...
+							for (TableColumnDescription column : columns) {
+								if (!column.isOptional() || force) {
+									if (force) {
+										String drop = getDialect().buildDropSQL(type, column.getName());
+										for (String sql : drop.split(";")) {
+											if (sql.trim().isEmpty()) {
+												continue;
+											}
+											Statement statement = connection.createStatement();
+											try {
+												logger.info("[" + getId() + "] Dropping existing column: " + column.getName());
+												logger.info(sql);
+												statement.execute(sql);
+											}
+											finally {
+												statement.close();
+											}
+										}
+									}
+									else {
+										logger.warn("[" + getId() + "] Found required column " + column.getName() + " for table " + tableName + " that is not present in data type: " + ((DefinedType) type).getId());
+									}
+								}
+							}
+							for (Element<?> newChild : children.values()) {
+								String alter = getDialect().buildAlterSQL(type, newChild.getName());
+								for (String sql : alter.split(";")) {
+									if (sql.trim().isEmpty()) {
+										continue;
+									}
+									Statement statement = connection.createStatement();
+									try {
+										logger.info("[" + getId() + "] Adding new column: " + newChild.getName());
+										logger.info(sql);
+										statement.execute(sql);
+									}
+									finally {
+										statement.close();
+									}
+								}
+							}
+						}
+						// the table does not exist
+						else if (describeTables.size() == 0) {
+							String create = getDialect().buildCreateSQL(type);
+							for (String sql : create.split(";")) {
+								if (sql.trim().isEmpty()) {
+									continue;
+								}
+								Statement statement = connection.createStatement();
+								try {
+									logger.info("[" + getId() + "] Adding new table: " + tableName);
+									logger.info(sql);
+									statement.execute(sql);
+								}
+								finally {
+									statement.close();
+								}
+							}
+						}
+						// there are multiple tables, we could not correctly limit it to the schema
+						else {
+							throw new IllegalStateException("Could not correctly limit the check to the current schema");
+						}
+						logger.debug("[" + getId() + "] Synchronized table: " + tableName);
+						connection.commit();
+					}
+					catch (Exception e) {
+						logger.error("Could not synchronize type: " + ((DefinedType) type).getId(), e);
+						connection.rollback();
+					}
+				}
+			}
+			finally {
+				connection.close();
+			}
 		}
 	}
 	

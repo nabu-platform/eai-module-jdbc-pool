@@ -15,11 +15,12 @@ import be.nabu.eai.repository.util.ClassAdapter;
 import be.nabu.libs.services.api.DefinedService;
 import be.nabu.libs.services.jdbc.api.DataSourceWithAffixes.AffixMapping;
 import be.nabu.libs.services.jdbc.api.SQLDialect;
+import be.nabu.libs.types.api.DefinedType;
 import be.nabu.utils.security.EncryptionXmlAdapter;
 
 @XmlRootElement(name = "jdbcPool")
 @XmlType(propOrder = { "driverClassName", "jdbcUrl", "username", "password", "context", "connectionTimeout", "idleTimeout", "maximumPoolSize", "minimumIdle", "autoCommit", "maxLifetime", "dialect", "enableMetrics", 
-	"defaultLanguage", "translationGet", "translationSet", "affixes" })
+	"defaultLanguage", "translationGet", "translationSet", "affixes", "managedTypes" })
 public class JDBCPoolConfiguration {
 	private String driverClassName, jdbcUrl, username, password, context;
 	private Long connectionTimeout, idleTimeout, maxLifetime;
@@ -31,6 +32,7 @@ public class JDBCPoolConfiguration {
 	
 	private String defaultLanguage;
 	private DefinedService translationGet, translationSet;
+	private List<String> managedTypes;
 	
 	@EnvironmentSpecific	// you can use a different database
 	@ValueEnumerator(enumerator = SQLDriverEnumerator.class)
@@ -143,7 +145,6 @@ public class JDBCPoolConfiguration {
 		this.context = context;
 	}
 	
-	
 	public String getDefaultLanguage() {
 		return defaultLanguage;
 	}
@@ -169,5 +170,11 @@ public class JDBCPoolConfiguration {
 		this.translationSet = translationSet;
 	}
 	
+	public List<String> getManagedTypes() {
+		return managedTypes;
+	}
+	public void setManagedTypes(List<String> managedTypes) {
+		this.managedTypes = managedTypes;
+	}
 	
 }
