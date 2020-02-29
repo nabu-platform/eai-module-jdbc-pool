@@ -296,6 +296,40 @@ public class Services {
 					finally {
 						columns.close();
 					}
+					
+					ResultSet indexInfo = connection.getMetaData().getIndexInfo(tableCatalogue, tableSchema, tableName, true, false);
+					try {
+						while (indexInfo.next()) {
+							boolean nonUnique = indexInfo.getBoolean("NON_UNIQUE");
+							String columName = indexInfo.getString("COLUMN_NAME");
+							if (!nonUnique) {
+								for (TableColumnDescription column : description.getColumnDescriptions()) {
+									if (column.getName().equals(columName)) {
+										column.setUnique(true);
+									}
+								}
+							}
+						}
+					}
+					finally {
+						indexInfo.close();
+					}
+					
+					ResultSet primaryKeys = connection.getMetaData().getPrimaryKeys(tableCatalogue, tableSchema, tableName);
+					try {
+						while (primaryKeys.next()) {
+							String columName = primaryKeys.getString("COLUMN_NAME");
+							for (TableColumnDescription column : description.getColumnDescriptions()) {
+								if (column.getName().equals(columName)) {
+									column.setUnique(true);
+									column.setPrimary(true);
+								}
+							}
+						}
+					}
+					finally {
+						primaryKeys.close();
+					}
 					result.add(description);
 				}
 			}

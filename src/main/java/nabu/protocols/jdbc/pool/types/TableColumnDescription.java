@@ -2,7 +2,7 @@ package nabu.protocols.jdbc.pool.types;
 
 public class TableColumnDescription {
 	private String name, type, typeName, description, format, databaseType;
-	private boolean optional, generated;
+	private boolean optional, generated, primary, unique;
 	public String getName() {
 		return name;
 	}
@@ -50,5 +50,17 @@ public class TableColumnDescription {
 	}
 	public void setDatabaseType(String databaseType) {
 		this.databaseType = databaseType;
+	}
+	public boolean isPrimary() {
+		return primary;
+	}
+	public void setPrimary(boolean primary) {
+		this.primary = primary;
+	}
+	public boolean isUnique() {
+		return unique;
+	}
+	public void setUnique(boolean unique) {
+		this.unique = unique;
 	}
 }
