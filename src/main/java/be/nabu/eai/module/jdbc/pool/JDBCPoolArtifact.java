@@ -131,11 +131,10 @@ public class JDBCPoolArtifact extends JAXBArtifact<JDBCPoolConfiguration> implem
 	}
 
 	public void synchronizeTypes(boolean force) throws SQLException {
-		List<String> managedTypes = getConfig().getManagedTypes();
+		List<DefinedType> managedTypes = getConfig().getManagedTypes();
 		if (managedTypes != null && !managedTypes.isEmpty()) {
 			List<ComplexType> typesToSync = new ArrayList<ComplexType>();
-			for (String typeId : managedTypes) {
-				Artifact type = getRepository().resolve(typeId);
+			for (DefinedType type : managedTypes) {
 				if (type instanceof ComplexType) {
 					// we need to make sure we create them in the correct order
 					List<ComplexType> localTypes = new ArrayList<ComplexType>();

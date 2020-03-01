@@ -27,8 +27,8 @@ import be.nabu.eai.api.NamingConvention;
 import be.nabu.eai.developer.MainController;
 import be.nabu.eai.module.types.structure.StructureManager;
 import be.nabu.eai.repository.api.ResourceEntry;
-import be.nabu.libs.artifacts.api.Artifact;
 import be.nabu.libs.property.ValueUtils;
+import be.nabu.libs.property.api.Property;
 import be.nabu.libs.property.api.Value;
 import be.nabu.libs.services.jdbc.JDBCUtils;
 import be.nabu.libs.services.jdbc.api.SQLDialect;
@@ -610,11 +610,25 @@ public static final class ForeignKeyComparator implements Comparator<ComplexType
 		return result;
 	}
 	
+	private static <T> boolean set(Element<?> element, Property<T> property, T value) {
+		T asIs = ValueUtils.getValue(property, element.getProperties());
+		if (asIs == null || !asIs.equals(value)) {
+			element.setProperty(new ValueImpl<T>(property, value));
+			return true;
+		}
+		return false;
+	}
+	
 	@SuppressWarnings({ "rawtypes", "unchecked" })
-	public static void toType(Structure into, TableDescription description) {
+	public static boolean toType(Structure into, TableDescription description) {
+		boolean changed = false;
 		if (description.getColumnDescriptions() != null) {
 //			into.setName(NamingConvention.LOWER_CAMEL_CASE.apply(description.getName()));
-			into.setProperty(new ValueImpl<String>(CollectionNameProperty.getInstance(), description.getName()));
+			String collectionName = ValueUtils.getValue(CollectionNameProperty.getInstance(), into.getProperties());
+			if (collectionName == null || !collectionName.equals(description.getName())) {
+				changed = true;
+				into.setProperty(new ValueImpl<String>(CollectionNameProperty.getInstance(), description.getName()));
+			}
 			List<String> existingElements = new ArrayList<String>();
 			for (Element<?> element : JDBCUtils.getFieldsInTable(into)) {
 				existingElements.add(element.getName());
@@ -641,21 +655,22 @@ public static final class ForeignKeyComparator implements Comparator<ComplexType
 							into
 						);
 						into.add(element);
+						changed = true;
 					}
-					element.setProperty(new ValueImpl<Integer>(MinOccursProperty.getInstance(), column.isOptional() ? 0 : 1));
-					element.setProperty(new ValueImpl<Boolean>(GeneratedProperty.getInstance(), column.isGenerated()));
-					element.setProperty(new ValueImpl<Boolean>(PrimaryKeyProperty.getInstance(), column.isPrimary()));
-					element.setProperty(new ValueImpl<Boolean>(UniqueProperty.getInstance(), column.isUnique()));
+					changed |= set(element, MinOccursProperty.getInstance(), column.isOptional() ? 0 : 1);
+					changed |= set(element, GeneratedProperty.getInstance(), column.isGenerated());
+					changed |= set(element, PrimaryKeyProperty.getInstance(), column.isPrimary());
+					changed |= set(element, UniqueProperty.getInstance(), column.isUnique());
 					if (column.getFormat() != null) {
 						if (Date.class.isAssignableFrom(((SimpleType<?>) element.getType()).getInstanceClass())) {
-							element.setProperty(new ValueImpl<String>(FormatProperty.getInstance(), column.getFormat()));
+							changed |= set(element, FormatProperty.getInstance(), column.getFormat());
 						}
 					}
-					if (column.getDescription() != null) {
+					if (column.getDescription() != null && !column.getDescription().trim().isEmpty()) {
 						String comment = ValueUtils.getValue(CommentProperty.getInstance(), element.getProperties());
 						// local comments are not override
 						if (comment == null || comment.trim().isEmpty()) {
-							element.setProperty(new ValueImpl<String>(CommentProperty.getInstance(), column.getDescription()));
+							changed |= set(element, CommentProperty.getInstance(), column.getDescription());
 						}
 					}
 				}
@@ -677,9 +692,11 @@ public static final class ForeignKeyComparator implements Comparator<ComplexType
 						restricted += "," + existingElement;
 					}
 					into.setProperty(new ValueImpl<String>(RestrictProperty.getInstance(), restricted));
+					changed = true;
 				}
 			}
 		}
+		return changed;
 	}
 	
 	// relink the tables with foreign keys
@@ -690,8 +707,7 @@ public static final class ForeignKeyComparator implements Comparator<ComplexType
 		}
 		Map<String, Structure> types = new HashMap<String, Structure>();
 		if (artifact.getConfig().getManagedTypes() != null) {
-			for (String typeId : artifact.getConfig().getManagedTypes()) {
-				Artifact type = MainController.getInstance().getRepository().resolve(typeId);
+			for (DefinedType type : artifact.getConfig().getManagedTypes()) {
 				if (type instanceof Structure) {
 					String collectionName = ValueUtils.getValue(CollectionNameProperty.getInstance(), ((Structure) type).getProperties());
 					if (collectionName != null && map.containsKey(collectionName)) {

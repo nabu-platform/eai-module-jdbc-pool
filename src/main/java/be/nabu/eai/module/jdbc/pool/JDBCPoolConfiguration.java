@@ -7,6 +7,7 @@ import javax.xml.bind.annotation.XmlRootElement;
 import javax.xml.bind.annotation.XmlType;
 import javax.xml.bind.annotation.adapters.XmlJavaTypeAdapter;
 
+import be.nabu.eai.api.ArtifactFilter;
 import be.nabu.eai.api.EnvironmentSpecific;
 import be.nabu.eai.api.InterfaceFilter;
 import be.nabu.eai.api.ValueEnumerator;
@@ -32,7 +33,7 @@ public class JDBCPoolConfiguration {
 	
 	private String defaultLanguage;
 	private DefinedService translationGet, translationSet;
-	private List<String> managedTypes;
+	private List<DefinedType> managedTypes;
 	
 	@EnvironmentSpecific	// you can use a different database
 	@ValueEnumerator(enumerator = SQLDriverEnumerator.class)
@@ -170,10 +171,12 @@ public class JDBCPoolConfiguration {
 		this.translationSet = translationSet;
 	}
 	
-	public List<String> getManagedTypes() {
+	@ArtifactFilter(suggest = false)
+	@XmlJavaTypeAdapter(value = ArtifactXMLAdapter.class)
+	public List<DefinedType> getManagedTypes() {
 		return managedTypes;
 	}
-	public void setManagedTypes(List<String> managedTypes) {
+	public void setManagedTypes(List<DefinedType> managedTypes) {
 		this.managedTypes = managedTypes;
 	}
 	

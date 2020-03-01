@@ -13,16 +13,19 @@ import be.nabu.eai.developer.managers.util.SimpleProperty;
 import be.nabu.eai.developer.managers.util.SimplePropertyUpdater;
 import be.nabu.eai.developer.util.EAIDeveloperUtils;
 import be.nabu.eai.module.jdbc.pool.JDBCPoolArtifact;
+import be.nabu.eai.module.jdbc.pool.JDBCPoolManager;
 import be.nabu.eai.module.jdbc.pool.JDBCPoolUtils;
 import be.nabu.eai.module.types.structure.StructureManager;
 import be.nabu.eai.repository.EAIResourceRepository;
 import be.nabu.eai.repository.api.Entry;
+import be.nabu.eai.repository.api.ResourceEntry;
 import be.nabu.eai.repository.resources.RepositoryEntry;
 import be.nabu.eai.repository.util.SystemPrincipal;
 import be.nabu.libs.services.api.Service;
 import be.nabu.libs.services.api.ServiceResult;
 import be.nabu.libs.types.TypeUtils;
 import be.nabu.libs.types.api.ComplexContent;
+import be.nabu.libs.types.api.DefinedType;
 import be.nabu.libs.types.structure.DefinedStructure;
 import javafx.beans.value.ChangeListener;
 import javafx.beans.value.ObservableValue;
@@ -126,7 +129,10 @@ public class GenerateDatabaseStructuresContextMenu implements EntryContextMenuPr
 											VBox container = new VBox();
 											container.setPadding(new Insets(10));
 											CheckBox automanage = new CheckBox("Automatically manage types");
-											automanage.setSelected(true);
+											// can't automanage if we can't update
+											automanage.setSelected(GenerateDatabaseScriptContextMenu.canEdit(pool.getId()));
+											// don't allow toggling on if we can't update
+											automanage.setDisable(!automanage.isSelected());
 											container.getChildren().addAll(field, pane, automanage, buttons);
 											Stage stage = EAIDeveloperUtils.buildPopup("Generate structures for tables", container, MainController.getInstance().getActiveStage(), null, true);
 											
@@ -157,15 +163,15 @@ public class GenerateDatabaseStructuresContextMenu implements EntryContextMenuPr
 														}
 														if (automanage.isSelected()) {
 															if (pool.getConfig().getManagedTypes() != null) {
-																pool.getConfig().setManagedTypes(new ArrayList<String>());
+																pool.getConfig().setManagedTypes(new ArrayList<DefinedType>());
 															}
-															pool.getConfig().getManagedTypes().add(structure.getId());
+															pool.getConfig().getManagedTypes().add(structure);
 														}
 													}
 													JDBCPoolUtils.relink(pool, chosen);
 													if (automanage.isSelected()) {
 														try {
-															pool.save(pool.getDirectory());
+															new JDBCPoolManager().save((ResourceEntry) entry.getRepository().getEntry(pool.getId()), pool);
 															MainController.getInstance().getServer().getRemote().reload(pool.getId());
 															MainController.getInstance().getCollaborationClient().updated(pool.getId(), "Added managed types");
 														}
