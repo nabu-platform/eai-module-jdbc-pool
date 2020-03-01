@@ -1,1 +1,2 @@
 be.nabu.eai.module.jdbc.context.GenerateDatabaseScriptContextMenu
+be.nabu.eai.module.jdbc.context.GenerateDatabaseStructuresContextMenu

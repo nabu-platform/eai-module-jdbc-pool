@@ -1,10 +1,10 @@
 package be.nabu.eai.module.jdbc.context;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 
 import javafx.event.ActionEvent;
@@ -26,7 +26,6 @@ import be.nabu.eai.repository.api.Entry;
 import be.nabu.eai.repository.util.SystemPrincipal;
 import be.nabu.libs.property.ValueUtils;
 import be.nabu.libs.property.api.Property;
-import be.nabu.libs.property.api.Value;
 import be.nabu.libs.services.api.Service;
 import be.nabu.libs.services.api.ServiceResult;
 import be.nabu.libs.services.jdbc.api.SQLDialect;
@@ -37,7 +36,6 @@ import be.nabu.libs.types.api.DefinedType;
 import be.nabu.libs.types.api.Element;
 import be.nabu.libs.types.base.ComplexElementImpl;
 import be.nabu.libs.types.properties.CollectionNameProperty;
-import be.nabu.libs.types.properties.ForeignKeyProperty;
 
 public class GenerateDatabaseScriptContextMenu implements EntryContextMenuProvider {
 
@@ -130,17 +128,7 @@ public class GenerateDatabaseScriptContextMenu implements EntryContextMenuProvid
 								MainController.getInstance().getServer().getRemote().reload(artifact.getId());
 								MainController.getInstance().getCollaborationClient().updated(artifact.getId(), "Added managed types");
 							}
-							Service service = (Service) EAIResourceRepository.getInstance().resolve("nabu.protocols.jdbc.pool.Services.synchronizeManagedTypes");
-							if (service != null) {
-								ComplexContent input = service.getServiceInterface().getInputDefinition().newInstance();
-								input.set("jdbcPoolId", artifact.getId());
-								input.set("force", true);
-								Future<ServiceResult> run = EAIResourceRepository.getInstance().getServiceRunner().run(service, EAIResourceRepository.getInstance().newExecutionContext(SystemPrincipal.ROOT), input);
-								ServiceResult serviceResult = run.get();
-								if (serviceResult.getException() != null) {
-									MainController.getInstance().notify(serviceResult.getException());
-								}
-							}
+							synchronizeManagedTypes(artifact);
 						}
 						catch (Exception e) {
 							MainController.getInstance().notify(e);
@@ -160,29 +148,42 @@ public class GenerateDatabaseScriptContextMenu implements EntryContextMenuProvid
 			return menu;
 		}
 		else if (entry.isNode() && JDBCPoolArtifact.class.isAssignableFrom(entry.getNode().getArtifactClass())) {
-			MenuItem menu = new MenuItem("Synchronize");
-			menu.addEventHandler(ActionEvent.ANY, new EventHandler<ActionEvent>() {
-				@Override
-				public void handle(ActionEvent event) {
-					try {
-						Service service = (Service) EAIResourceRepository.getInstance().resolve("nabu.protocols.jdbc.pool.Services.synchronizeManagedTypes");
-						if (service != null) {
-							ComplexContent input = service.getServiceInterface().getInputDefinition().newInstance();
-							input.set("jdbcPoolId", entry.getId());
-							input.set("force", true);
-							Future<ServiceResult> run = EAIResourceRepository.getInstance().getServiceRunner().run(service, EAIResourceRepository.getInstance().newExecutionContext(SystemPrincipal.ROOT), input);
-							ServiceResult serviceResult = run.get();
-							if (serviceResult.getException() != null) {
-								MainController.getInstance().notify(serviceResult.getException());
-							}
+			try {
+				Menu menu = new Menu("Synchronize");
+				MenuItem toDatabase = new MenuItem("To Database");
+				JDBCPoolArtifact artifact = (JDBCPoolArtifact) entry.getNode().getArtifact();
+				toDatabase.addEventHandler(ActionEvent.ANY, new EventHandler<ActionEvent>() {
+					@Override
+					public void handle(ActionEvent event) {
+						try {
+							synchronizeManagedTypes(artifact);
+						}
+						catch (Exception e) {
+							MainController.getInstance().notify(e);
 						}
 					}
-					catch (Exception e) {
-						MainController.getInstance().notify(e);
-					}
+				});
+				menu.getItems().addAll(toDatabase);
+				if (artifact.getConfig().getManagedTypes() != null && !artifact.getConfig().getManagedTypes().isEmpty()) {
+					MenuItem fromDatabase = new MenuItem("From Database");
+					fromDatabase.addEventHandler(ActionEvent.ANY, new EventHandler<ActionEvent>() {
+						@Override
+						public void handle(ActionEvent event) {
+							try {
+								synchronizeManagedTypesFromDatabase(artifact, artifact.getConfig().getManagedTypes());
+							}
+							catch (Exception e) {
+								MainController.getInstance().notify(e);
+							}
+						}
+					});
+					menu.getItems().addAll(fromDatabase);
 				}
-			});
-			return menu;
+				return menu;
+			}
+			catch (Exception e) {
+				MainController.getInstance().notify(e);
+			}
 		}
 		else if (!entry.isLeaf()) {
 			boolean hasComplexType = false;
@@ -285,17 +286,7 @@ public class GenerateDatabaseScriptContextMenu implements EntryContextMenuProvid
 									MainController.getInstance().getServer().getRemote().reload(artifact.getId());
 									MainController.getInstance().getCollaborationClient().updated(artifact.getId(), "Added managed types");
 								}
-								Service service = (Service) EAIResourceRepository.getInstance().resolve("nabu.protocols.jdbc.pool.Services.synchronizeManagedTypes");
-								if (service != null) {
-									ComplexContent input = service.getServiceInterface().getInputDefinition().newInstance();
-									input.set("jdbcPoolId", artifact.getId());
-									input.set("force", true);
-									Future<ServiceResult> run = EAIResourceRepository.getInstance().getServiceRunner().run(service, EAIResourceRepository.getInstance().newExecutionContext(SystemPrincipal.ROOT), input);
-									ServiceResult serviceResult = run.get();
-									if (serviceResult.getException() != null) {
-										MainController.getInstance().notify(serviceResult.getException());
-									}
-								}
+								synchronizeManagedTypes(artifact);
 							}
 							catch (Exception e) {
 								MainController.getInstance().notify(e);
@@ -318,4 +309,21 @@ public class GenerateDatabaseScriptContextMenu implements EntryContextMenuProvid
 		return null;
 	}
 
+	private void synchronizeManagedTypes(JDBCPoolArtifact artifact) throws InterruptedException, ExecutionException {
+		Service service = (Service) EAIResourceRepository.getInstance().resolve("nabu.protocols.jdbc.pool.Services.synchronizeManagedTypes");
+		if (service != null) {
+			ComplexContent input = service.getServiceInterface().getInputDefinition().newInstance();
+			input.set("jdbcPoolId", artifact.getId());
+			input.set("force", true);
+			Future<ServiceResult> run = EAIResourceRepository.getInstance().getServiceRunner().run(service, EAIResourceRepository.getInstance().newExecutionContext(SystemPrincipal.ROOT), input);
+			ServiceResult serviceResult = run.get();
+			if (serviceResult.getException() != null) {
+				MainController.getInstance().notify(serviceResult.getException());
+			}
+		}
+	}
+	
+	private void synchronizeManagedTypesFromDatabase(JDBCPoolArtifact artifact, List<String> managedTypes) {
+		
+	}
 }

@@ -37,9 +37,13 @@ import be.nabu.libs.types.base.SimpleElementImpl;
 import be.nabu.libs.types.base.ValueImpl;
 import be.nabu.libs.types.properties.CommentProperty;
 import be.nabu.libs.types.properties.ForeignKeyProperty;
+import be.nabu.libs.types.properties.FormatProperty;
 import be.nabu.libs.types.properties.GeneratedProperty;
 import be.nabu.libs.types.properties.MinOccursProperty;
+import be.nabu.libs.types.properties.PrimaryKeyProperty;
+import be.nabu.libs.types.properties.UniqueProperty;
 import be.nabu.libs.types.resultset.ResultSetCollectionHandler;
+import be.nabu.libs.types.simple.UUID;
 import be.nabu.libs.types.structure.Structure;
 import nabu.protocols.jdbc.pool.Services.DumpMapping;
 import nabu.protocols.jdbc.pool.types.TableColumnDescription;
@@ -543,12 +547,25 @@ public static final class ForeignKeyComparator implements Comparator<ComplexType
 					
 					ResultSet indexInfo = connection.getMetaData().getIndexInfo(tableCatalogue, tableSchema, tableName, true, false);
 					try {
+						// indexes can be unique combinations of fields
+						// for example if we have a unique combination of 3 fields, it will return 3 separate records with the same index name and a different column name
+						// we only want to mark fields that are unique of themselves
+						Map<String, List<String>> indexes = new HashMap<String, List<String>>();
 						while (indexInfo.next()) {
 							boolean nonUnique = indexInfo.getBoolean("NON_UNIQUE");
-							String columName = indexInfo.getString("COLUMN_NAME");
-							if (!nonUnique) {
+							String columnName = indexInfo.getString("COLUMN_NAME");
+							String indexName = indexInfo.getString("INDEX_NAME");
+							if (indexName != null && !nonUnique) {
+								if (!indexes.containsKey(indexName)) {
+									indexes.put(indexName, new ArrayList<String>());
+								}
+								indexes.get(indexName).add(columnName);
+							}
+						}
+						for (Map.Entry<String, List<String>> entry : indexes.entrySet()) {
+							if (entry.getValue().size() == 1) {
 								for (TableColumnDescription column : description.getColumnDescriptions()) {
-									if (column.getName().equals(columName)) {
+									if (column.getName().equals(entry.getValue().get(0))) {
 										column.setUnique(true);
 									}
 								}
@@ -582,5 +599,75 @@ public static final class ForeignKeyComparator implements Comparator<ComplexType
 			connection.close();
 		}
 		return result;
+	}
+	
+	@SuppressWarnings({ "rawtypes", "unchecked" })
+	public static void toType(Structure into, TableDescription description) {
+		if (description.getColumnDescriptions() != null) {
+//			into.setName(NamingConvention.LOWER_CAMEL_CASE.apply(description.getName()));
+			for (TableColumnDescription column : description.getColumnDescriptions()) {
+				try {
+					String columnName = NamingConvention.LOWER_CAMEL_CASE.apply(column.getName());
+					Element<?> element = into.get(columnName);
+					if (element == null) {
+						Class<?> simpleClass;
+						if (column.getDatabaseType() != null && column.getDatabaseType().toLowerCase().contains("uuid")) {
+							simpleClass = UUID.class;
+						}
+						else if (column.getType() != null) {
+							simpleClass = Thread.currentThread().getContextClassLoader().loadClass(column.getType());
+						}
+						else {
+							throw new IllegalArgumentException("Could not find correct class for column: " + column.getName());
+						}
+						element = new SimpleElementImpl(
+							columnName,
+							SimpleTypeWrapperFactory.getInstance().getWrapper().wrap(simpleClass), 
+							into
+						);
+						into.add(element);
+					}
+					if (column.isOptional()) {
+						element.setProperty(new ValueImpl<Integer>(MinOccursProperty.getInstance(), 0));
+					}
+					if (column.isGenerated()) {
+						element.setProperty(new ValueImpl<Boolean>(GeneratedProperty.getInstance(), true));
+					}
+					if (column.isPrimary()) {
+						element.setProperty(new ValueImpl<Boolean>(PrimaryKeyProperty.getInstance(), true));
+					}
+					if (column.isUnique()) {
+						element.setProperty(new ValueImpl<Boolean>(UniqueProperty.getInstance(), true));
+					}
+					if (column.getFormat() != null) {
+						if (Date.class.isAssignableFrom(((SimpleType<?>) element.getType()).getInstanceClass())) {
+							element.setProperty(new ValueImpl<String>(FormatProperty.getInstance(), column.getFormat()));
+						}
+					}
+					if (column.getDescription() != null) {
+						element.setProperty(new ValueImpl<String>(CommentProperty.getInstance(), column.getDescription()));
+					}
+				}
+				catch (Exception e) {
+					throw new RuntimeException(e);
+				}
+			}
+		}
+	}
+	
+	// relink the tables with foreign keys
+	public static void relink(JDBCPoolArtifact artifact, List<TableDescription> descriptions) {
+		for (TableDescription description : descriptions) {
+			if (description.getTableReferences() != null) {
+				for (TableKeyDescription reference : description.getTableReferences()) {
+					String localField = NamingConvention.LOWER_CAMEL_CASE.apply(reference.getLocalField());
+//					Element<?> element = into.get(localField);
+//					if (element != null) {
+						
+//					}
+				}
+			}
+		}
+		
 	}
 }
