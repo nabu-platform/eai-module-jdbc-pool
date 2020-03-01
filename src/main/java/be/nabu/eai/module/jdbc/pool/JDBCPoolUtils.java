@@ -23,7 +23,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import be.nabu.eai.api.NamingConvention;
+import be.nabu.libs.property.ValueUtils;
 import be.nabu.libs.property.api.Value;
+import be.nabu.libs.services.jdbc.JDBCUtils;
 import be.nabu.libs.services.jdbc.api.SQLDialect;
 import be.nabu.libs.types.SimpleTypeWrapperFactory;
 import be.nabu.libs.types.TypeUtils;
@@ -41,6 +43,7 @@ import be.nabu.libs.types.properties.FormatProperty;
 import be.nabu.libs.types.properties.GeneratedProperty;
 import be.nabu.libs.types.properties.MinOccursProperty;
 import be.nabu.libs.types.properties.PrimaryKeyProperty;
+import be.nabu.libs.types.properties.RestrictProperty;
 import be.nabu.libs.types.properties.UniqueProperty;
 import be.nabu.libs.types.resultset.ResultSetCollectionHandler;
 import be.nabu.libs.types.simple.UUID;
@@ -605,9 +608,14 @@ public static final class ForeignKeyComparator implements Comparator<ComplexType
 	public static void toType(Structure into, TableDescription description) {
 		if (description.getColumnDescriptions() != null) {
 //			into.setName(NamingConvention.LOWER_CAMEL_CASE.apply(description.getName()));
+			List<String> existingElements = new ArrayList<String>();
+			for (Element<?> element : JDBCUtils.getFieldsInTable(into)) {
+				existingElements.add(element.getName());
+			}
 			for (TableColumnDescription column : description.getColumnDescriptions()) {
 				try {
 					String columnName = NamingConvention.LOWER_CAMEL_CASE.apply(column.getName());
+					existingElements.remove(columnName);
 					Element<?> element = into.get(columnName);
 					if (element == null) {
 						Class<?> simpleClass;
@@ -650,6 +658,22 @@ public static final class ForeignKeyComparator implements Comparator<ComplexType
 				}
 				catch (Exception e) {
 					throw new RuntimeException(e);
+				}
+			}
+			// remove any superfluous
+			for (String existingElement : existingElements) {
+				// try to remove it
+				into.remove(into.get(existingElement));
+				// if it was inherited, restrict it
+				if (into.get(existingElement) != null) {
+					String restricted = ValueUtils.getValue(RestrictProperty.getInstance(), into.getProperties());
+					if (restricted == null || restricted.trim().isEmpty()) {
+						restricted = existingElement;
+					}
+					else {
+						restricted += "," + existingElement;
+					}
+					into.setProperty(new ValueImpl<String>(RestrictProperty.getInstance(), restricted));
 				}
 			}
 		}

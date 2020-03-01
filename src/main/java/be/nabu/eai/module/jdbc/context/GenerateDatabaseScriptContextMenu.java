@@ -11,6 +11,8 @@ import javafx.event.ActionEvent;
 import javafx.event.EventHandler;
 import javafx.scene.control.Menu;
 import javafx.scene.control.MenuItem;
+import nabu.protocols.jdbc.pool.types.TableDescription;
+import be.nabu.eai.api.NamingConvention;
 import be.nabu.eai.developer.MainController;
 import be.nabu.eai.developer.api.EntryContextMenuProvider;
 import be.nabu.eai.developer.managers.base.BaseConfigurationGUIManager;
@@ -19,11 +21,14 @@ import be.nabu.eai.developer.util.Confirm;
 import be.nabu.eai.developer.util.EAIDeveloperUtils;
 import be.nabu.eai.module.jdbc.pool.JDBCPoolArtifact;
 import be.nabu.eai.module.jdbc.pool.JDBCPoolUtils;
+import be.nabu.eai.module.types.structure.StructureManager;
 import be.nabu.eai.developer.util.Confirm.ConfirmType;
 import be.nabu.eai.repository.EAIRepositoryUtils;
 import be.nabu.eai.repository.EAIResourceRepository;
 import be.nabu.eai.repository.api.Entry;
+import be.nabu.eai.repository.api.ResourceEntry;
 import be.nabu.eai.repository.util.SystemPrincipal;
+import be.nabu.libs.artifacts.api.Artifact;
 import be.nabu.libs.property.ValueUtils;
 import be.nabu.libs.property.api.Property;
 import be.nabu.libs.services.api.Service;
@@ -36,6 +41,8 @@ import be.nabu.libs.types.api.DefinedType;
 import be.nabu.libs.types.api.Element;
 import be.nabu.libs.types.base.ComplexElementImpl;
 import be.nabu.libs.types.properties.CollectionNameProperty;
+import be.nabu.libs.types.structure.DefinedStructure;
+import be.nabu.libs.types.structure.Structure;
 
 public class GenerateDatabaseScriptContextMenu implements EntryContextMenuProvider {
 
@@ -323,7 +330,46 @@ public class GenerateDatabaseScriptContextMenu implements EntryContextMenuProvid
 		}
 	}
 	
-	private void synchronizeManagedTypesFromDatabase(JDBCPoolArtifact artifact, List<String> managedTypes) {
-		
+	private void synchronizeManagedTypesFromDatabase(JDBCPoolArtifact pool, List<String> managedTypes) {
+		Service service = (Service) EAIResourceRepository.getInstance().resolve("nabu.protocols.jdbc.pool.Services.listTables");
+		if (service != null) {
+			for (String managedType : managedTypes) {
+				try {
+					Artifact resolve = MainController.getInstance().getRepository().resolve(managedType);
+					if (resolve instanceof DefinedStructure) {
+						String collectionName = ValueUtils.getValue(CollectionNameProperty.getInstance(), ((Structure) resolve).getProperties());
+						if (collectionName != null) {
+							ComplexContent input = service.getServiceInterface().getInputDefinition().newInstance();
+							input.set("jdbcPoolId", pool.getId());
+							collectionName = NamingConvention.UNDERSCORE.apply(collectionName);
+							input.set("tablePattern", collectionName);
+							input.set("limitToCurrentSchema", true);
+							Future<ServiceResult> run = EAIResourceRepository.getInstance().getServiceRunner().run(service, EAIResourceRepository.getInstance().newExecutionContext(SystemPrincipal.ROOT), input);
+							ServiceResult serviceResult = run.get();
+							if (serviceResult.getException() != null) {
+								MainController.getInstance().notify(serviceResult.getException());
+							}
+							else {
+								List<Object> objects = (List<Object>) serviceResult.getOutput().get("tables");
+								// could be multiple tables if you have for example "node" and "node_other"
+								for (Object object : objects) {
+									TableDescription description = object instanceof TableDescription ? (TableDescription) object : TypeUtils.getAsBean((ComplexContent) object, TableDescription.class);
+									if (description.getName().equalsIgnoreCase(collectionName)) {
+										JDBCPoolUtils.toType((Structure) resolve, description);
+										new StructureManager().save((ResourceEntry) MainController.getInstance().getRepository().getEntry(resolve.getId()), (DefinedStructure) resolve);
+										MainController.getInstance().getRepository().reload(resolve.getId());
+										MainController.getInstance().getServer().getRemote().reload(resolve.getId());
+										MainController.getInstance().getCollaborationClient().updated(resolve.getId(), "Refreshed managed types");
+									}
+								}
+							}
+						}
+					}
+				}
+				catch (Exception e) {
+					MainController.getInstance().notify(e);
+				}
+			}
+		}
 	}
 }
