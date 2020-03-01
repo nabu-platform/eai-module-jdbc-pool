@@ -74,7 +74,7 @@ public class GenerateDatabaseStructuresContextMenu implements EntryContextMenuPr
 											List<CheckBox> checks = new ArrayList<CheckBox>();
 											for (Object object : objects) {
 												TableDescription description = object instanceof TableDescription ? (TableDescription) object : TypeUtils.getAsBean((ComplexContent) object, TableDescription.class);
-												CheckBox check = new CheckBox(description.getName());
+												CheckBox check = new CheckBox(description.getSchema() + "." + description.getName());
 												String localName = NamingConvention.LOWER_CAMEL_CASE.apply(description.getName());
 												check.setDisable(entry.getChild(localName) != null);
 												check.selectedProperty().addListener(new ChangeListener<Boolean>() {
@@ -162,6 +162,7 @@ public class GenerateDatabaseStructuresContextMenu implements EntryContextMenuPr
 															pool.getConfig().getManagedTypes().add(structure.getId());
 														}
 													}
+													JDBCPoolUtils.relink(pool, chosen);
 													if (automanage.isSelected()) {
 														try {
 															pool.save(pool.getDirectory());

@@ -16,6 +16,7 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 import javax.sql.DataSource;
 
@@ -23,6 +24,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import be.nabu.eai.api.NamingConvention;
+import be.nabu.eai.developer.MainController;
+import be.nabu.eai.module.types.structure.StructureManager;
+import be.nabu.eai.repository.api.ResourceEntry;
+import be.nabu.libs.artifacts.api.Artifact;
 import be.nabu.libs.property.ValueUtils;
 import be.nabu.libs.property.api.Value;
 import be.nabu.libs.services.jdbc.JDBCUtils;
@@ -37,6 +42,7 @@ import be.nabu.libs.types.api.Element;
 import be.nabu.libs.types.api.SimpleType;
 import be.nabu.libs.types.base.SimpleElementImpl;
 import be.nabu.libs.types.base.ValueImpl;
+import be.nabu.libs.types.properties.CollectionNameProperty;
 import be.nabu.libs.types.properties.CommentProperty;
 import be.nabu.libs.types.properties.ForeignKeyProperty;
 import be.nabu.libs.types.properties.FormatProperty;
@@ -46,7 +52,7 @@ import be.nabu.libs.types.properties.PrimaryKeyProperty;
 import be.nabu.libs.types.properties.RestrictProperty;
 import be.nabu.libs.types.properties.UniqueProperty;
 import be.nabu.libs.types.resultset.ResultSetCollectionHandler;
-import be.nabu.libs.types.simple.UUID;
+import be.nabu.libs.types.structure.DefinedStructure;
 import be.nabu.libs.types.structure.Structure;
 import nabu.protocols.jdbc.pool.Services.DumpMapping;
 import nabu.protocols.jdbc.pool.types.TableColumnDescription;
@@ -608,6 +614,7 @@ public static final class ForeignKeyComparator implements Comparator<ComplexType
 	public static void toType(Structure into, TableDescription description) {
 		if (description.getColumnDescriptions() != null) {
 //			into.setName(NamingConvention.LOWER_CAMEL_CASE.apply(description.getName()));
+			into.setProperty(new ValueImpl<String>(CollectionNameProperty.getInstance(), description.getName()));
 			List<String> existingElements = new ArrayList<String>();
 			for (Element<?> element : JDBCUtils.getFieldsInTable(into)) {
 				existingElements.add(element.getName());
@@ -635,25 +642,21 @@ public static final class ForeignKeyComparator implements Comparator<ComplexType
 						);
 						into.add(element);
 					}
-					if (column.isOptional()) {
-						element.setProperty(new ValueImpl<Integer>(MinOccursProperty.getInstance(), 0));
-					}
-					if (column.isGenerated()) {
-						element.setProperty(new ValueImpl<Boolean>(GeneratedProperty.getInstance(), true));
-					}
-					if (column.isPrimary()) {
-						element.setProperty(new ValueImpl<Boolean>(PrimaryKeyProperty.getInstance(), true));
-					}
-					if (column.isUnique()) {
-						element.setProperty(new ValueImpl<Boolean>(UniqueProperty.getInstance(), true));
-					}
+					element.setProperty(new ValueImpl<Integer>(MinOccursProperty.getInstance(), column.isOptional() ? 0 : 1));
+					element.setProperty(new ValueImpl<Boolean>(GeneratedProperty.getInstance(), column.isGenerated()));
+					element.setProperty(new ValueImpl<Boolean>(PrimaryKeyProperty.getInstance(), column.isPrimary()));
+					element.setProperty(new ValueImpl<Boolean>(UniqueProperty.getInstance(), column.isUnique()));
 					if (column.getFormat() != null) {
 						if (Date.class.isAssignableFrom(((SimpleType<?>) element.getType()).getInstanceClass())) {
 							element.setProperty(new ValueImpl<String>(FormatProperty.getInstance(), column.getFormat()));
 						}
 					}
 					if (column.getDescription() != null) {
-						element.setProperty(new ValueImpl<String>(CommentProperty.getInstance(), column.getDescription()));
+						String comment = ValueUtils.getValue(CommentProperty.getInstance(), element.getProperties());
+						// local comments are not override
+						if (comment == null || comment.trim().isEmpty()) {
+							element.setProperty(new ValueImpl<String>(CommentProperty.getInstance(), column.getDescription()));
+						}
 					}
 				}
 				catch (Exception e) {
@@ -681,17 +684,57 @@ public static final class ForeignKeyComparator implements Comparator<ComplexType
 	
 	// relink the tables with foreign keys
 	public static void relink(JDBCPoolArtifact artifact, List<TableDescription> descriptions) {
+		Map<String, TableDescription> map = new HashMap<String, TableDescription>();
 		for (TableDescription description : descriptions) {
-			if (description.getTableReferences() != null) {
-				for (TableKeyDescription reference : description.getTableReferences()) {
-					String localField = NamingConvention.LOWER_CAMEL_CASE.apply(reference.getLocalField());
-//					Element<?> element = into.get(localField);
-//					if (element != null) {
-						
-//					}
+			map.put(description.getName(), description);
+		}
+		Map<String, Structure> types = new HashMap<String, Structure>();
+		if (artifact.getConfig().getManagedTypes() != null) {
+			for (String typeId : artifact.getConfig().getManagedTypes()) {
+				Artifact type = MainController.getInstance().getRepository().resolve(typeId);
+				if (type instanceof Structure) {
+					String collectionName = ValueUtils.getValue(CollectionNameProperty.getInstance(), ((Structure) type).getProperties());
+					if (collectionName != null && map.containsKey(collectionName)) {
+						types.put(collectionName, (Structure) type);
+					}
+				}
+			}
+			for (Map.Entry<String, Structure> entry : types.entrySet()) {
+				boolean changed = false;
+				TableDescription description = map.get(entry.getKey());
+				if (description.getTableReferences() != null) {
+					for (TableKeyDescription reference : description.getTableReferences()) {
+						String localField = NamingConvention.LOWER_CAMEL_CASE.apply(reference.getLocalField());
+						Element<?> element = entry.getValue().get(localField);
+						if (element != null) {
+							// the structure we are referencing
+							Structure structure = types.get(reference.getName());
+							if (structure instanceof DefinedType) {
+								String remoteField = NamingConvention.LOWER_CAMEL_CASE.apply(reference.getRemoteField());
+								Element<?> to = structure.get(remoteField);
+								if (to != null) {
+									String toBe = ((DefinedType) structure).getId() + ":" + to.getName();
+									String asIs = ValueUtils.getValue(ForeignKeyProperty.getInstance(), element.getProperties());
+									if (asIs == null || !asIs.equals(toBe)) {
+										element.setProperty(new ValueImpl<String>(ForeignKeyProperty.getInstance(), toBe));
+										changed = true;
+									}
+								}
+							}
+						}
+					}
+				}
+				if (changed) {
+					try {
+						new StructureManager().save((ResourceEntry) artifact.getRepository().getEntry(((DefinedType) entry.getValue()).getId()), (DefinedStructure) entry.getValue());
+						MainController.getInstance().getServer().getRemote().reload(((DefinedType) entry.getValue()).getId());
+						MainController.getInstance().getCollaborationClient().updated(((DefinedType) entry.getValue()).getId(), "Relinked managed types");
+					}
+					catch (Exception e) {
+						MainController.getInstance().notify(e);
+					}
 				}
 			}
 		}
-		
 	}
 }

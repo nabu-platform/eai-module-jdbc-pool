@@ -1,6 +1,7 @@
 package be.nabu.eai.module.jdbc.context;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -120,9 +121,12 @@ public class GenerateDatabaseScriptContextMenu implements EntryContextMenuProvid
 			
 			// add a synchronize option
 			Menu synchronize = new Menu("Synchronize");
+			Menu fromDatabase = new Menu("From database");
+			Menu toDatabase = new Menu("To database");
+			synchronize.getItems().addAll(toDatabase, fromDatabase);
 			for (JDBCPoolArtifact artifact : entry.getRepository().getArtifacts(JDBCPoolArtifact.class)) {
-				MenuItem item = new MenuItem(artifact.getId());
-				item.addEventHandler(ActionEvent.ANY, new EventHandler<ActionEvent>() {
+				MenuItem toItem = new MenuItem(artifact.getId());
+				toItem.addEventHandler(ActionEvent.ANY, new EventHandler<ActionEvent>() {
 					@Override
 					public void handle(ActionEvent event) {
 						try {
@@ -142,16 +146,40 @@ public class GenerateDatabaseScriptContextMenu implements EntryContextMenuProvid
 						}
 					}
 				});
-				synchronize.getItems().add(item);
-				synchronize.getItems().sort(new Comparator<MenuItem>() {
+				toDatabase.getItems().add(toItem);
+				if (artifact.getConfig().getManagedTypes() != null && artifact.getConfig().getManagedTypes().contains(entry.getId())) {
+					MenuItem fromItem = new MenuItem(artifact.getId());
+					fromItem.addEventHandler(ActionEvent.ANY, new EventHandler<ActionEvent>() {
+						@Override
+						public void handle(ActionEvent arg0) {
+							synchronizeManagedTypesFromDatabase(artifact, Arrays.asList(entry.getId()));
+						}
+					});
+					fromDatabase.getItems().add(fromItem);
+				}
+			}
+			toDatabase.getItems().sort(new Comparator<MenuItem>() {
+				@Override
+				public int compare(MenuItem o1, MenuItem o2) {
+					return o1.getText().compareTo(o2.getText());
+				}
+			});
+			if (fromDatabase.getItems().isEmpty()) {
+				synchronize.getItems().remove(fromDatabase);
+			}
+			else {
+				fromDatabase.getItems().sort(new Comparator<MenuItem>() {
 					@Override
 					public int compare(MenuItem o1, MenuItem o2) {
 						return o1.getText().compareTo(o2.getText());
 					}
 				});
 			}
-			menu.getItems().addAll(create, insert, synchronize);
-			
+			menu.getItems().addAll(create, insert);
+			// the to contains all the connections, the from is a subselection
+			if (!toDatabase.getItems().isEmpty()) {
+				menu.getItems().add(synchronize);
+			}
 			return menu;
 		}
 		else if (entry.isNode() && JDBCPoolArtifact.class.isAssignableFrom(entry.getNode().getArtifactClass())) {
@@ -178,6 +206,7 @@ public class GenerateDatabaseScriptContextMenu implements EntryContextMenuProvid
 						public void handle(ActionEvent event) {
 							try {
 								synchronizeManagedTypesFromDatabase(artifact, artifact.getConfig().getManagedTypes());
+								relinkAll(artifact);
 							}
 							catch (Exception e) {
 								MainController.getInstance().notify(e);
@@ -266,9 +295,11 @@ public class GenerateDatabaseScriptContextMenu implements EntryContextMenuProvid
 				
 				// add a synchronize option
 				Menu synchronize = new Menu("Synchronize");
+				Menu toDatabase = new Menu("To database");
+				Menu fromDatabase = new Menu("From database");
 				for (JDBCPoolArtifact artifact : entry.getRepository().getArtifacts(JDBCPoolArtifact.class)) {
-					MenuItem item = new MenuItem(artifact.getId());
-					item.addEventHandler(ActionEvent.ANY, new EventHandler<ActionEvent>() {
+					MenuItem toItem = new MenuItem(artifact.getId());
+					toItem.addEventHandler(ActionEvent.ANY, new EventHandler<ActionEvent>() {
 						@Override
 						public void handle(ActionEvent event) {
 							try {
@@ -300,16 +331,57 @@ public class GenerateDatabaseScriptContextMenu implements EntryContextMenuProvid
 							}
 						}
 					});
-					synchronize.getItems().add(item);
-					synchronize.getItems().sort(new Comparator<MenuItem>() {
-						@Override
-						public int compare(MenuItem o1, MenuItem o2) {
-							return o1.getText().compareTo(o2.getText());
+					toDatabase.getItems().add(toItem);
+					
+					if (artifact.getConfig().getManagedTypes() != null) {
+						// check if we have any here
+						List<String> typesToSynchronize = new ArrayList<String>();
+						for (Entry child : entry) {
+							try {
+								if (child.isNode() && ComplexType.class.isAssignableFrom(child.getNode().getArtifactClass()) && artifact.getConfig().getManagedTypes().contains(child.getId())) {
+									typesToSynchronize.add(child.getId());
+								}
+							}
+							catch (Exception e) {
+								MainController.getInstance().notify(e);
+							}
 						}
-					});
+						// if we have types we can resynchronize, allow the option
+						if (!typesToSynchronize.isEmpty()) {
+							MenuItem fromItem = new MenuItem(artifact.getId());
+							fromItem.addEventHandler(ActionEvent.ANY, new EventHandler<ActionEvent>() {
+								@Override
+								public void handle(ActionEvent arg0) {
+									synchronizeManagedTypesFromDatabase(artifact, typesToSynchronize);
+								}
+							});
+							fromDatabase.getItems().add(fromItem);
+						}
+					}
+				}
+				toDatabase.getItems().sort(new Comparator<MenuItem>() {
+					@Override
+					public int compare(MenuItem o1, MenuItem o2) {
+						return o1.getText().compareTo(o2.getText());
+					}
+				});
+				fromDatabase.getItems().sort(new Comparator<MenuItem>() {
+					@Override
+					public int compare(MenuItem o1, MenuItem o2) {
+						return o1.getText().compareTo(o2.getText());
+					}
+				});
+				
+				synchronize.getItems().add(toDatabase);
+				if (!fromDatabase.getItems().isEmpty()) {
+					synchronize.getItems().add(fromDatabase);
 				}
 				
-				menu.getItems().addAll(create, dropItem, synchronize);
+				menu.getItems().addAll(create, dropItem);
+				
+				if (!toDatabase.getItems().isEmpty()) {
+					menu.getItems().add(synchronize);
+				}
 				return menu;
 			}
 		}
@@ -330,6 +402,39 @@ public class GenerateDatabaseScriptContextMenu implements EntryContextMenuProvid
 		}
 	}
 	
+	@SuppressWarnings("unchecked")
+	private void relinkAll(JDBCPoolArtifact pool) {
+		try {
+			Service service = (Service) EAIResourceRepository.getInstance().resolve("nabu.protocols.jdbc.pool.Services.listTables");
+			if (service != null) {
+				ComplexContent input = service.getServiceInterface().getInputDefinition().newInstance();
+				input.set("jdbcPoolId", pool.getId());
+				input.set("limitToCurrentSchema", true);
+				Future<ServiceResult> run = EAIResourceRepository.getInstance().getServiceRunner().run(service, EAIResourceRepository.getInstance().newExecutionContext(SystemPrincipal.ROOT), input);
+				ServiceResult serviceResult = run.get();
+				if (serviceResult.getException() != null) {
+					MainController.getInstance().notify(serviceResult.getException());
+				}
+				else {
+					List<Object> objects = (List<Object>) serviceResult.getOutput().get("tables");
+					if (objects != null) {
+						List<TableDescription> tables = new ArrayList<TableDescription>();
+						// could be multiple tables if you have for example "node" and "node_other"
+						for (Object object : objects) {
+							TableDescription description = object instanceof TableDescription ? (TableDescription) object : TypeUtils.getAsBean((ComplexContent) object, TableDescription.class);
+							tables.add(description);
+						}
+						JDBCPoolUtils.relink(pool, tables);
+					}
+				}
+			}
+		}
+		catch (Exception e) {
+			MainController.getInstance().notify(e);
+		}
+	}
+	
+	@SuppressWarnings("unchecked")
 	private void synchronizeManagedTypesFromDatabase(JDBCPoolArtifact pool, List<String> managedTypes) {
 		Service service = (Service) EAIResourceRepository.getInstance().resolve("nabu.protocols.jdbc.pool.Services.listTables");
 		if (service != null) {
