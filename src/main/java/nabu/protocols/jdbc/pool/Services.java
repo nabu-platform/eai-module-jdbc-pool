@@ -30,6 +30,7 @@ import be.nabu.utils.io.IOUtils;
 import be.nabu.utils.io.api.ByteBuffer;
 import be.nabu.utils.io.api.ReadableContainer;
 import nabu.protocols.jdbc.pool.types.JDBCPoolInformation;
+import nabu.protocols.jdbc.pool.types.TableChange;
 import nabu.protocols.jdbc.pool.types.TableDescription;
 
 @WebService
@@ -148,12 +149,13 @@ public class Services {
 		return null;
 	}
 	
-	public void synchronizeManagedTypes(@WebParam(name = "jdbcPoolId") String jdbcPoolId, @WebParam(name = "force") Boolean force) throws SQLException {
+	@WebResult(name = "changes")
+	public List<TableChange> synchronizeManagedTypes(@WebParam(name = "jdbcPoolId") String jdbcPoolId, @WebParam(name = "force") Boolean force) throws SQLException {
 		JDBCPoolArtifact resolve = (JDBCPoolArtifact) EAIResourceRepository.getInstance().resolve(jdbcPoolId);
 		if (resolve == null) {
 			throw new IllegalArgumentException("Could not find pool: " + jdbcPoolId);
 		}
-		resolve.synchronizeTypes(force != null && force);
+		return resolve.synchronizeTypes(force != null && force);
 	}
 	
 	@WebResult(name = "uri")

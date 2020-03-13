@@ -24,7 +24,6 @@ import be.nabu.eai.repository.EAIRepositoryUtils;
 import be.nabu.eai.repository.api.Repository;
 import be.nabu.eai.repository.artifacts.jaxb.JAXBArtifact;
 import be.nabu.eai.repository.util.SystemPrincipal;
-import be.nabu.libs.artifacts.api.Artifact;
 import be.nabu.libs.artifacts.api.StartableArtifact;
 import be.nabu.libs.artifacts.api.StoppableArtifact;
 import be.nabu.libs.artifacts.api.TunnelableArtifact;
@@ -36,6 +35,7 @@ import be.nabu.libs.resources.api.ResourceContainer;
 import be.nabu.libs.services.api.DefinedService;
 import be.nabu.libs.services.api.ServiceInstance;
 import be.nabu.libs.services.api.ServiceInterface;
+import be.nabu.libs.services.jdbc.DefaultDialect;
 import be.nabu.libs.services.jdbc.JDBCService;
 import be.nabu.libs.services.jdbc.JDBCUtils;
 import be.nabu.libs.services.jdbc.api.DataSourceWithAffixes;
@@ -58,6 +58,7 @@ import be.nabu.libs.types.properties.CollectionNameProperty;
 import be.nabu.libs.types.properties.MinOccursProperty;
 import be.nabu.libs.types.properties.NameProperty;
 import be.nabu.libs.types.structure.Structure;
+import nabu.protocols.jdbc.pool.types.TableChange;
 import nabu.protocols.jdbc.pool.types.TableColumnDescription;
 import nabu.protocols.jdbc.pool.types.TableDescription;
 
@@ -130,8 +131,9 @@ public class JDBCPoolArtifact extends JAXBArtifact<JDBCPoolConfiguration> implem
 		return EAIRepositoryUtils.uncamelify(value);
 	}
 
-	public void synchronizeTypes(boolean force) throws SQLException {
+	public List<TableChange> synchronizeTypes(boolean force) throws SQLException {
 		List<DefinedType> managedTypes = getConfig().getManagedTypes();
+		List<TableChange> changes = new ArrayList<TableChange>();
 		if (managedTypes != null && !managedTypes.isEmpty()) {
 			List<ComplexType> typesToSync = new ArrayList<ComplexType>();
 			for (DefinedType type : managedTypes) {
@@ -157,11 +159,15 @@ public class JDBCPoolArtifact extends JAXBArtifact<JDBCPoolConfiguration> implem
 			}
 			Connection connection = getDataSource().getConnection();
 			try {
+				SQLDialect dialect = getDialect();
+				if (dialect == null) {
+					dialect = new DefaultDialect();
+				}
 				JDBCPoolUtils.deepSort(typesToSync, new JDBCPoolUtils.ForeignKeyComparator(false));
 				for (ComplexType type : typesToSync) {
 					try {
 						String tableName = getName(type.getProperties());
-						List<TableDescription> describeTables = JDBCPoolUtils.describeTables(null, null, tableName, getDataSource(), true);
+						List<TableDescription> describeTables = JDBCPoolUtils.describeTables(null, null, dialect.standardizeTablePattern(tableName), getDataSource(), true);
 						// the table exists
 						if (describeTables.size() == 1) {
 							Map<String, Element<?>> children = new LinkedHashMap<String, Element<?>>();
@@ -174,7 +180,14 @@ public class JDBCPoolArtifact extends JAXBArtifact<JDBCPoolConfiguration> implem
 							Iterator<TableColumnDescription> iterator = columns.iterator();
 							while (iterator.hasNext()) {
 								TableColumnDescription column = iterator.next();
-								if (children.remove(column.getName()) != null) {
+								String keyMatch = null;
+								for (String key : children.keySet()) {
+									if (key.equalsIgnoreCase(column.getName())) {
+										keyMatch = key;
+										break;
+									}
+								}
+								if (keyMatch != null && children.remove(keyMatch) != null) {
 									iterator.remove();
 								}
 							}
@@ -183,7 +196,7 @@ public class JDBCPoolArtifact extends JAXBArtifact<JDBCPoolConfiguration> implem
 							for (TableColumnDescription column : columns) {
 								if (!column.isOptional() || force) {
 									if (force) {
-										String drop = getDialect().buildDropSQL(type, column.getName());
+										String drop = dialect.buildDropSQL(type, column.getName());
 										for (String sql : drop.split(";")) {
 											if (sql.trim().isEmpty()) {
 												continue;
@@ -192,6 +205,12 @@ public class JDBCPoolArtifact extends JAXBArtifact<JDBCPoolConfiguration> implem
 											try {
 												logger.info("[" + getId() + "] Dropping existing column: " + column.getName());
 												logger.info(sql);
+												TableChange change = new TableChange();
+												change.setTable(description.getName());
+												change.setColumn(column.getName());
+												change.setScript(sql);
+												change.setReason("Column no longer exists in the definition and we forced the drop");
+												changes.add(change);
 												statement.execute(sql);
 											}
 											finally {
@@ -205,7 +224,7 @@ public class JDBCPoolArtifact extends JAXBArtifact<JDBCPoolConfiguration> implem
 								}
 							}
 							for (Element<?> newChild : children.values()) {
-								String alter = getDialect().buildAlterSQL(type, newChild.getName());
+								String alter = dialect.buildAlterSQL(type, newChild.getName());
 								for (String sql : alter.split(";")) {
 									if (sql.trim().isEmpty()) {
 										continue;
@@ -214,6 +233,12 @@ public class JDBCPoolArtifact extends JAXBArtifact<JDBCPoolConfiguration> implem
 									try {
 										logger.info("[" + getId() + "] Adding new column: " + newChild.getName());
 										logger.info(sql);
+										TableChange change = new TableChange();
+										change.setTable(description.getName());
+										change.setColumn(newChild.getName());
+										change.setScript(sql);
+										change.setReason("New column was found in the definition");
+										changes.add(change);
 										statement.execute(sql);
 									}
 									finally {
@@ -224,7 +249,7 @@ public class JDBCPoolArtifact extends JAXBArtifact<JDBCPoolConfiguration> implem
 						}
 						// the table does not exist
 						else if (describeTables.size() == 0) {
-							String create = getDialect().buildCreateSQL(type);
+							String create = dialect.buildCreateSQL(type);
 							for (String sql : create.split(";")) {
 								if (sql.trim().isEmpty()) {
 									continue;
@@ -233,6 +258,11 @@ public class JDBCPoolArtifact extends JAXBArtifact<JDBCPoolConfiguration> implem
 								try {
 									logger.info("[" + getId() + "] Adding new table: " + tableName);
 									logger.info(sql);
+									TableChange change = new TableChange();
+									change.setTable(tableName);
+									change.setScript(sql);
+									change.setReason("The table did not yet exist");
+									changes.add(change);
 									statement.execute(sql);
 								}
 								finally {
@@ -257,6 +287,7 @@ public class JDBCPoolArtifact extends JAXBArtifact<JDBCPoolConfiguration> implem
 				connection.close();
 			}
 		}
+		return changes;
 	}
 	
 	@Override

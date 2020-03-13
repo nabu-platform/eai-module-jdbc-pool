@@ -137,6 +137,7 @@ public class GenerateDatabaseScriptContextMenu implements EntryContextMenuProvid
 								if (!artifact.getConfig().getManagedTypes().contains(entry.getNode().getArtifact())) {
 									artifact.getConfig().getManagedTypes().add((DefinedType) entry.getNode().getArtifact());
 									new JDBCPoolManager().save((ResourceEntry) entry.getRepository().getEntry(artifact.getId()), artifact);
+									MainController.getInstance().getRepository().reload(artifact.getId());
 									MainController.getInstance().getServer().getRemote().reload(artifact.getId());
 									MainController.getInstance().getCollaborationClient().updated(artifact.getId(), "Added managed types");
 								}
@@ -334,6 +335,7 @@ public class GenerateDatabaseScriptContextMenu implements EntryContextMenuProvid
 									}
 									if (changed) {
 										new JDBCPoolManager().save((ResourceEntry) entry.getRepository().getEntry(artifact.getId()), artifact);
+										MainController.getInstance().getRepository().reload(artifact.getId());
 										MainController.getInstance().getServer().getRemote().reload(artifact.getId());
 										MainController.getInstance().getCollaborationClient().updated(artifact.getId(), "Added managed types");
 									}
