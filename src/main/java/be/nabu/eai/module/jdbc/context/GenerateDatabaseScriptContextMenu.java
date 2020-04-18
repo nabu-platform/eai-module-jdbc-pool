@@ -253,10 +253,23 @@ public class GenerateDatabaseScriptContextMenu implements EntryContextMenuProvid
 						public void handle(ActionEvent arg0) {
 							try {
 								List<ComplexType> typesToDrop = new ArrayList<ComplexType>();
+								List<ComplexType> uncollectedTypes = new ArrayList<ComplexType>();
 								for (Entry child : entry) {
 									if (child.isNode() && ComplexType.class.isAssignableFrom(child.getNode().getArtifactClass())) {
-										typesToDrop.add((ComplexType) child.getNode().getArtifact());
+										ComplexType complexTypeToAdd = (ComplexType) child.getNode().getArtifact();
+										// only automatically synchronize types that have a collection name!
+										// the others are likely not of interest
+										if (ValueUtils.getValue(CollectionNameProperty.getInstance(), complexTypeToAdd.getProperties()) != null) {
+											typesToDrop.add(complexTypeToAdd);
+										}
+										else {
+											uncollectedTypes.add(complexTypeToAdd);
+										}
 									}
+								}
+								// again: presumably not using collection names...
+								if (typesToDrop.isEmpty()) {
+									typesToDrop.addAll(uncollectedTypes);
 								}
 								JDBCPoolUtils.deepSort(typesToDrop, new JDBCPoolUtils.ForeignKeyComparator(false));
 								
@@ -282,10 +295,23 @@ public class GenerateDatabaseScriptContextMenu implements EntryContextMenuProvid
 					public void handle(ActionEvent arg0) {
 						try {
 							List<ComplexType> typesToDrop = new ArrayList<ComplexType>();
+							List<ComplexType> uncollectedTypes = new ArrayList<ComplexType>();
 							for (Entry child : entry) {
 								if (child.isNode() && ComplexType.class.isAssignableFrom(child.getNode().getArtifactClass())) {
-									typesToDrop.add((ComplexType) child.getNode().getArtifact());
+									ComplexType complexTypeToAdd = (ComplexType) child.getNode().getArtifact();
+									// only automatically synchronize types that have a collection name!
+									// the others are likely not of interest
+									if (ValueUtils.getValue(CollectionNameProperty.getInstance(), complexTypeToAdd.getProperties()) != null) {
+										typesToDrop.add(complexTypeToAdd);
+									}
+									else {
+										uncollectedTypes.add(complexTypeToAdd);
+									}
 								}
+							}
+							// again: presumably not using collection names...
+							if (typesToDrop.isEmpty()) {
+								typesToDrop.addAll(uncollectedTypes);
 							}
 							JDBCPoolUtils.deepSort(typesToDrop, new JDBCPoolUtils.ForeignKeyComparator(true));
 							StringBuilder builder = new StringBuilder();
@@ -321,10 +347,23 @@ public class GenerateDatabaseScriptContextMenu implements EntryContextMenuProvid
 										artifact.getConfig().setManagedTypes(new ArrayList<DefinedType>());
 									}
 									List<ComplexType> typesToSynchronize = new ArrayList<ComplexType>();
+									List<ComplexType> uncollectedTypes = new ArrayList<ComplexType>();
 									for (Entry child : entry) {
 										if (child.isNode() && ComplexType.class.isAssignableFrom(child.getNode().getArtifactClass())) {
-											typesToSynchronize.add((ComplexType) child.getNode().getArtifact());
+											ComplexType complexTypeToSynchronize = (ComplexType) child.getNode().getArtifact();
+											// only automatically synchronize types that have a collection name!
+											// the others are likely not of interest
+											if (ValueUtils.getValue(CollectionNameProperty.getInstance(), complexTypeToSynchronize.getProperties()) != null) {
+												typesToSynchronize.add(complexTypeToSynchronize);
+											}
+											else {
+												uncollectedTypes.add(complexTypeToSynchronize);
+											}
 										}
+									}
+									// if we have no correctly annotated types, we presumably are not using collection names as a thing, just add all the types...
+									if (typesToSynchronize.isEmpty()) {
+										typesToSynchronize.addAll(uncollectedTypes);
 									}
 									boolean changed = false;
 									for (ComplexType type : typesToSynchronize) {
