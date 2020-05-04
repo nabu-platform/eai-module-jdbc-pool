@@ -104,7 +104,9 @@ public class JDBCPoolServiceInstance implements ServiceInstance {
 							for (int i = 1; i <= metaData.getColumnCount(); i++) {
 								String columnClassName = metaData.getColumnClassName(i);
 								try {
-									Class<?> clazz = Thread.currentThread().getContextClassLoader().loadClass(columnClassName);
+									// realistically we'll almost never save bytes in the database
+									// H2 seems to report some types (at least uuid, maybe more) as [B though...
+									Class<?> clazz = "[B".equals(columnClassName) ? String.class : Thread.currentThread().getContextClassLoader().loadClass(columnClassName);
 									if (java.util.Date.class.isAssignableFrom(clazz)) {
 										clazz = java.util.Date.class;
 									}
@@ -150,7 +152,8 @@ public class JDBCPoolServiceInstance implements ServiceInstance {
 						}
 						StructureInstance rootInstance = root.newInstance();
 						rootInstance.set(JDBCService.RESULTS, results);
-						output.set(JDBCService.RESULTS, rootInstance);
+//						output.set(JDBCService.RESULTS, rootInstance);
+						output.set(JDBCService.RESULTS, results);
 					}
 					finally {
 						executeQuery.close();

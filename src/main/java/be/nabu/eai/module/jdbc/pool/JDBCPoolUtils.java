@@ -32,6 +32,7 @@ import be.nabu.libs.property.api.Property;
 import be.nabu.libs.property.api.Value;
 import be.nabu.libs.services.jdbc.JDBCUtils;
 import be.nabu.libs.services.jdbc.api.SQLDialect;
+import be.nabu.libs.types.DefinedTypeResolverFactory;
 import be.nabu.libs.types.SimpleTypeWrapperFactory;
 import be.nabu.libs.types.TypeUtils;
 import be.nabu.libs.types.api.ComplexContent;
@@ -64,39 +65,93 @@ public class JDBCPoolUtils {
 public static final class ForeignKeyComparator implements Comparator<ComplexType> {
 		
 		private boolean reverse;
+		private Map<String, List<String>> foreign = new HashMap<String, List<String>>();
 
 		public ForeignKeyComparator(boolean reverse) {
 			this.reverse = reverse;
 		}
 		
+		private List<String> getForeign(ComplexType type) {
+			String id = ((DefinedType) type).getId();
+			if (!foreign.containsKey(id)) {
+				List<String> result = new ArrayList<String>();
+				foreign.put(id, result);
+				for (Element<?> element : TypeUtils.getAllChildren(type)) {
+					Value<String> foreign = element.getProperty(ForeignKeyProperty.getInstance());
+					if (foreign != null) {
+						String other = foreign.getValue().split(":")[0];
+						result.add(other);
+						result.addAll(getForeign((ComplexType) DefinedTypeResolverFactory.getInstance().getResolver().resolve(other)));
+					}
+				}
+			}
+			return foreign.get(id);
+		}
+		
 		@Override
 		public int compare(ComplexType o1, ComplexType o2) {
 			int multiplier = reverse ? -1 : 1;
+			boolean has1To2 = false;
+			boolean has2To1 = false;
 			boolean hasForeign1 = false;
-			for (Element<?> element : TypeUtils.getAllChildren(o1)) {
-				Value<String> foreign = element.getProperty(ForeignKeyProperty.getInstance());
-				hasForeign1 |= (foreign != null && !foreign.getValue().equals(((DefinedType) o1).getId()));
-				if (foreign != null && foreign.getValue().split(":")[0].equals(((DefinedType) o2).getId())) {
-					return 1 * multiplier;
-				}
-			}
 			boolean hasForeign2 = false;
-			for (Element<?> element : TypeUtils.getAllChildren(o2)) {
-				Value<String> foreign = element.getProperty(ForeignKeyProperty.getInstance());
-				hasForeign2 |= (foreign != null && !foreign.getValue().equals(((DefinedType) o2).getId()));
-				if (foreign != null && foreign.getValue().split(":")[0].equals(((DefinedType) o1).getId())) {
-					return -1 * multiplier;
-				}
-			}
-			if (!hasForeign1 && hasForeign2) {
-				return -1 * multiplier;
-			}
-			else if (hasForeign1 && !hasForeign2) {
-				return 1 * multiplier;
-			}
-			else {
+			
+			List<String> foreign1 = getForeign(o1);
+			List<String> foreign2 = getForeign(o2);
+			
+			has1To2 = foreign1.contains(((DefinedType) o2).getId());
+			has2To1 = foreign2.contains(((DefinedType) o1).getId());
+			// circular!
+			if (has1To2 && has2To1) {
+				System.out.println("Circular reference found between managed types: " + o1 + " and " + o2);
 				return 0;
 			}
+			else if (has1To2) {
+				return 1 * multiplier;
+			}
+			else if (has2To1) {
+				return -1 * multiplier;
+			}
+			return 0;
+			
+//			for (Element<?> element : TypeUtils.getAllChildren(o1)) {
+//				Value<String> foreign = element.getProperty(ForeignKeyProperty.getInstance());
+//				hasForeign1 |= (foreign != null && !foreign.getValue().equals(((DefinedType) o1).getId()));
+//				if (foreign != null && foreign.getValue().split(":")[0].equals(((DefinedType) o2).getId())) {
+////					return 1 * multiplier;
+//					has1To2 = true;
+//				}
+//			}
+//			for (Element<?> element : TypeUtils.getAllChildren(o2)) {
+//				Value<String> foreign = element.getProperty(ForeignKeyProperty.getInstance());
+//				hasForeign2 |= (foreign != null && !foreign.getValue().equals(((DefinedType) o2).getId()));
+//				if (foreign != null && foreign.getValue().split(":")[0].equals(((DefinedType) o1).getId())) {
+////					return -1 * multiplier;
+//					has2To1 = true;
+//				}
+//			}
+//			System.out.println("comparing: " + o1 + " and " + o2 + " --> " + has1To2 + ", " + has2To1 + ", " + hasForeign1 + ", " + hasForeign2);
+//			// circular!
+//			if (has1To2 && has2To1) {
+//				System.out.println("Circular reference found between managed types: " + o1 + " and " + o2);
+//				return 0;
+//			}
+//			else if (has1To2) {
+//				return 1 * multiplier;
+//			}
+//			else if (has2To1) {
+//				return -1 * multiplier;
+//			}
+//			// if there are no foreign keys to one another, we order by the existence of _any_ foreign key
+//			if (!hasForeign1 && hasForeign2) {
+//				return -1 * multiplier;
+//			}
+//			else if (hasForeign1 && !hasForeign2) {
+//				return 1 * multiplier;
+//			}
+//			else {
+//				return 0;
+//			}
 		}
 	}
 	

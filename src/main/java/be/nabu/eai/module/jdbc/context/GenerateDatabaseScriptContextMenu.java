@@ -443,7 +443,7 @@ public class GenerateDatabaseScriptContextMenu implements EntryContextMenuProvid
 		return null;
 	}
 
-	private void synchronizeManagedTypes(JDBCPoolArtifact artifact) throws InterruptedException, ExecutionException {
+	public static void synchronizeManagedTypes(JDBCPoolArtifact artifact) throws InterruptedException, ExecutionException {
 		Service service = (Service) EAIResourceRepository.getInstance().resolve("nabu.protocols.jdbc.pool.Services.synchronizeManagedTypes");
 		if (service != null) {
 			ComplexContent input = service.getServiceInterface().getInputDefinition().newInstance();

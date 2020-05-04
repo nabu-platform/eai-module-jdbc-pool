@@ -55,6 +55,7 @@ import be.nabu.libs.types.base.SimpleElementImpl;
 import be.nabu.libs.types.base.ValueImpl;
 import be.nabu.libs.types.java.BeanResolver;
 import be.nabu.libs.types.properties.CollectionNameProperty;
+import be.nabu.libs.types.properties.MaxOccursProperty;
 import be.nabu.libs.types.properties.MinOccursProperty;
 import be.nabu.libs.types.properties.NameProperty;
 import be.nabu.libs.types.structure.Structure;
@@ -369,14 +370,15 @@ public class JDBCPoolArtifact extends JAXBArtifact<JDBCPoolConfiguration> implem
 					input.add(new SimpleElementImpl<String>("sql", wrapper.wrap(String.class), input));
 					input.add(new SimpleElementImpl<String>("resultType", wrapper.wrap(String.class), input, new ValueImpl<Integer>(MinOccursProperty.getInstance(), 0)));
 					input.add(new SimpleElementImpl<String>(JDBCService.TRANSACTION, wrapper.wrap(String.class), input, new ValueImpl<Integer>(MinOccursProperty.getInstance(), 0)));
-					input.add(new SimpleElementImpl<Integer>(JDBCService.OFFSET, wrapper.wrap(Integer.class), input, new ValueImpl<Integer>(MinOccursProperty.getInstance(), 0)));
+					input.add(new SimpleElementImpl<Long>(JDBCService.OFFSET, wrapper.wrap(Long.class), input, new ValueImpl<Integer>(MinOccursProperty.getInstance(), 0)));
 					input.add(new SimpleElementImpl<Integer>(JDBCService.LIMIT, wrapper.wrap(Integer.class), input, new ValueImpl<Integer>(MinOccursProperty.getInstance(), 0)));
 //					input.add(new ComplexElementImpl(JDBCService.PARAMETERS, (ComplexType) BeanResolver.getInstance().resolve(KeyValuePair.class), input, 
 //						new ValueImpl<Integer>(MinOccursProperty.getInstance(), 0),
 //						new ValueImpl<Integer>(MaxOccursProperty.getInstance(), 0)));
 					Structure output = new Structure();
 					output.setName("output");
-					output.add(new ComplexElementImpl(JDBCService.RESULTS, (ComplexType) BeanResolver.getInstance().resolve(Object.class), output, new ValueImpl<Integer>(MinOccursProperty.getInstance(), 0)));
+					output.add(new ComplexElementImpl(JDBCService.RESULTS, (ComplexType) BeanResolver.getInstance().resolve(Object.class), output, new ValueImpl<Integer>(MinOccursProperty.getInstance(), 0),
+						new ValueImpl<Integer>(MaxOccursProperty.getInstance(), 0)));
 					this.output = output;
 					this.input = input;
 				}
