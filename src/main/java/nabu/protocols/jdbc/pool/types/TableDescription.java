@@ -11,19 +11,19 @@ public class TableDescription {
 		return schema;
 	}
 	public void setSchema(String schema) {
-		this.schema = schema;
+		this.schema = schema == null ? null : schema.toLowerCase();
 	}
 	public String getName() {
 		return name;
 	}
 	public void setName(String name) {
-		this.name = name;
+		this.name = name == null ? null : name.toLowerCase();
 	}
 	public String getCatalogus() {
 		return catalogus;
 	}
 	public void setCatalogus(String catalogus) {
-		this.catalogus = catalogus;
+		this.catalogus = catalogus == null ? null : catalogus.toLowerCase();
 	}
 	public List<TableKeyDescription> getTableReferences() {
 		return tableReferences;

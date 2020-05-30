@@ -7,7 +7,7 @@ public class TableColumnDescription {
 		return name;
 	}
 	public void setName(String name) {
-		this.name = name;
+		this.name = name == null ? null : name.toLowerCase();
 	}
 	public String getType() {
 		return type;

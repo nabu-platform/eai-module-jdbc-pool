@@ -4,6 +4,7 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.nio.charset.Charset;
 import java.text.ParseException;
+import java.util.Date;
 import java.util.List;
 import java.util.concurrent.Future;
 
@@ -32,6 +33,7 @@ import javafx.geometry.Orientation;
 import javafx.geometry.Side;
 import javafx.scene.Node;
 import javafx.scene.control.Button;
+import javafx.scene.control.Label;
 import javafx.scene.control.ScrollPane;
 import javafx.scene.control.SplitPane;
 import javafx.scene.control.Tab;
@@ -109,17 +111,31 @@ public class JDBCPoolGUIManager extends BaseJAXBComplexGUIManager<JDBCPoolConfig
 		HBox buttons = new HBox();
 		buttons.setPadding(new Insets(10));
 		Button run = new Button("Run SQL");
+		Label label = new Label();
+		HBox.setMargin(label, new Insets(0, 0, 0, 10));
 		run.addEventHandler(ActionEvent.ANY, new EventHandler<ActionEvent>() {
 			@Override
 			public void handle(ActionEvent arg0) {
-				runQuery(artifact, editor.getContent(), results, 0);
+				Date date = new Date();
+				String content = editor.getSelection();
+				if (content == null || content.trim().isEmpty()) {
+					content = editor.getContent();
+				}
+				runQuery(artifact, content, results, 0);
+				label.setText("Run in: " + (new Date().getTime() - date.getTime()) + "ms");
 			}
 		});
-		buttons.getChildren().add(run);
+		buttons.getChildren().addAll(run, label);
 		editor.subscribe("CONTROL_ENTERED", new EventHandler<Event>() {
 			@Override
 			public void handle(Event arg0) {
-				runQuery(artifact, editor.getContent(), results, 0);
+				Date date = new Date();
+				String content = editor.getSelection();
+				if (content == null || content.trim().isEmpty()) {
+					content = editor.getContent();
+				}
+				runQuery(artifact, content, results, 0);
+				label.setText("Run in: " + (new Date().getTime() - date.getTime()) + "ms");
 				arg0.consume();
 			}
 		});
@@ -152,6 +168,16 @@ public class JDBCPoolGUIManager extends BaseJAXBComplexGUIManager<JDBCPoolConfig
 					XMLBinding binding = new XMLBinding(content, Charset.forName("UTF-8"));
 					ComplexContent unmarshal = binding.unmarshal(new ByteArrayInputStream(object.toString().getBytes(Charset.forName("UTF-8"))), new Window[0]);
 					MainController.getInstance().showContent(results, unmarshal, null);
+				}
+				else if (serviceResult.getException() != null) {
+					Label emptyLabel = new Label("Your query could not be run correctly: " + serviceResult.getException().getMessage());
+					emptyLabel.setPadding(new Insets(10));
+					results.getChildren().add(emptyLabel);
+				}
+				else {
+					Label emptyLabel = new Label("No results for this query");
+					emptyLabel.setPadding(new Insets(10));
+					results.getChildren().add(emptyLabel);
 				}
 			}
 			catch (Exception e) {

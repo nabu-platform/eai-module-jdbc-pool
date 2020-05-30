@@ -133,9 +133,9 @@ public class Services {
 				OutputStreamWriter writer = new OutputStreamWriter(streamable, Charset.forName("UTF-8"));
 				try {
 					SQLDialect dialect = details == null || details.getDialect() == null ? resolve.getDialect() : details.getDialect().newInstance();
-					boolean includeDdl = details.getIncludeDdl() != null && details.getIncludeDdl();
-					boolean includeDml = details.getIncludeDml() != null && details.getIncludeDml();
-					JDBCPoolUtils.dump(connection, null, schemaPattern, tablePattern, writer, dialect, includeDdl, includeDml, details.getTableBlacklistRegex(), details.getTableWhitelistRegex(), details.getMappings());
+					boolean includeDdl = details == null || (details.getIncludeDdl() != null && details.getIncludeDdl());
+					boolean includeDml = details != null && details.getIncludeDml() != null && details.getIncludeDml();
+					JDBCPoolUtils.dump(connection, null, schemaPattern, tablePattern, writer, dialect, includeDdl, includeDml, details == null ? null : details.getTableBlacklistRegex(), details == null ? null : details.getTableWhitelistRegex(), details == null ? null : details.getMappings());
 				}
 				finally {	
 					writer.close();

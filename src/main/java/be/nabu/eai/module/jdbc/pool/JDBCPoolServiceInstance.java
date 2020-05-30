@@ -76,7 +76,7 @@ public class JDBCPoolServiceInstance implements ServiceInstance {
 			Long offset = content == null ? null : (Long) content.get(JDBCService.OFFSET);
 			Integer limit = content == null ? null : (Integer) content.get(JDBCService.LIMIT);
 			boolean nativeLimit = false;
-			if (offset != null || limit != null) {
+			if ((offset != null || limit != null) && sql.toLowerCase().contains("select")) {
 				if (pool.getDialect() != null) {
 					String limitedSql = pool.getDialect().limit(sql, offset, limit);
 					if (limitedSql != null) {
@@ -90,7 +90,7 @@ public class JDBCPoolServiceInstance implements ServiceInstance {
 			Statement statement = connection.createStatement();
 			try {
 				// "show" can be used in postgres to get some parameters
-				if (sql.trim().toLowerCase().startsWith("select") || sql.trim().toLowerCase().startsWith("show") || sql.trim().toLowerCase().startsWith("explain")) {
+				if (sql.trim().toLowerCase().startsWith("select") || sql.trim().toLowerCase().startsWith("show") || sql.trim().toLowerCase().startsWith("explain") || sql.trim().toLowerCase().startsWith("with")) {
 					if (!nativeLimit && limit != null) {
 						statement.setMaxRows((int) (offset != null ? offset + limit : limit));
 					}
