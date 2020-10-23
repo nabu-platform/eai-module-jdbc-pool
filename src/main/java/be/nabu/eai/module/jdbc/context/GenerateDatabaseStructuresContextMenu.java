@@ -22,6 +22,7 @@ import be.nabu.eai.repository.api.Entry;
 import be.nabu.eai.repository.api.ResourceEntry;
 import be.nabu.eai.repository.resources.RepositoryEntry;
 import be.nabu.eai.repository.util.SystemPrincipal;
+import be.nabu.libs.property.api.Property;
 import be.nabu.libs.services.api.Service;
 import be.nabu.libs.services.api.ServiceResult;
 import be.nabu.libs.types.TypeUtils;
@@ -36,6 +37,7 @@ import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.control.Button;
 import javafx.scene.control.CheckBox;
+import javafx.scene.control.Menu;
 import javafx.scene.control.MenuItem;
 import javafx.scene.control.ScrollPane;
 import javafx.scene.control.TextField;
@@ -49,19 +51,25 @@ public class GenerateDatabaseStructuresContextMenu implements EntryContextMenuPr
 	@Override
 	public MenuItem getContext(Entry entry) {
 		if (!entry.isLeaf()) {
-			MenuItem generate = new MenuItem("New structure from database");
+			Menu menu = new Menu("Generate Model");
+			
+			MenuItem generate = new MenuItem("From Database");
 			generate.addEventHandler(ActionEvent.ANY, new EventHandler<ActionEvent>() {
 				@Override
 				public void handle(ActionEvent arg0) {
 					SimpleProperty<JDBCPoolArtifact> pool = new SimpleProperty<JDBCPoolArtifact>("JDBC Pool", JDBCPoolArtifact.class, true);
-					SimplePropertyUpdater updater = new SimplePropertyUpdater(true, new LinkedHashSet(Arrays.asList(pool)));
+					LinkedHashSet<Property<?>> properties = new LinkedHashSet<Property<?>>();
+					properties.add(pool);
+					properties.add(new SimpleProperty<String>("Schema Pattern", String.class, false));
+					properties.add(new SimpleProperty<String>("Table Pattern", String.class, false));
+					SimplePropertyUpdater updater = new SimplePropertyUpdater(true, properties);
 					EAIDeveloperUtils.buildPopup(MainController.getInstance(), updater, "Choose JDBC Pool", new EventHandler<ActionEvent>() {
 						@Override
 						public void handle(ActionEvent arg0) {
 							try {
 								JDBCPoolArtifact pool = updater.getValue("JDBC Pool");
 								if (pool != null) {
-									generateStructure(entry, pool);
+									generateStructure(entry, pool, updater.getValue("Schema Pattern"), updater.getValue("Table Pattern"));
 								}
 							}
 							catch (Exception e) {
@@ -72,17 +80,26 @@ public class GenerateDatabaseStructuresContextMenu implements EntryContextMenuPr
 					});
 				}
 			});
-			return generate;
+			menu.getItems().add(generate);
+			return menu;
 		}
 		return null;
 	}
 
-	public static void generateStructure(Entry entry, JDBCPoolArtifact pool) throws InterruptedException, ExecutionException {
+	public static void generateStructure(Entry entry, JDBCPoolArtifact pool, String schema, String table) throws InterruptedException, ExecutionException {
 		Service service = (Service) EAIResourceRepository.getInstance().resolve("nabu.protocols.jdbc.pool.Services.listTables");
 		if (service != null) {
 			ComplexContent input = service.getServiceInterface().getInputDefinition().newInstance();
 			input.set("jdbcPoolId", pool.getId());
-			input.set("limitToCurrentSchema", true);
+			if (schema == null) {
+				input.set("limitToCurrentSchema", true);
+			}
+			else {
+				input.set("schemaPattern", schema);
+			}
+			if (table != null) {
+				input.set("tablePattern", table);
+			}
 			Future<ServiceResult> run = EAIResourceRepository.getInstance().getServiceRunner().run(service, EAIResourceRepository.getInstance().newExecutionContext(SystemPrincipal.ROOT), input);
 			ServiceResult serviceResult = run.get();
 			if (serviceResult.getException() != null) {

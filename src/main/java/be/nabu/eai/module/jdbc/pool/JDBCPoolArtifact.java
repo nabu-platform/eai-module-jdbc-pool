@@ -7,6 +7,7 @@ import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
@@ -24,7 +25,10 @@ import be.nabu.eai.repository.EAIRepositoryUtils;
 import be.nabu.eai.repository.api.Repository;
 import be.nabu.eai.repository.artifacts.jaxb.JAXBArtifact;
 import be.nabu.eai.repository.util.SystemPrincipal;
+import be.nabu.libs.artifacts.ExternalDependencyImpl;
 import be.nabu.libs.artifacts.api.ContextualArtifact;
+import be.nabu.libs.artifacts.api.ExternalDependency;
+import be.nabu.libs.artifacts.api.ExternalDependencyArtifact;
 import be.nabu.libs.artifacts.api.StartableArtifact;
 import be.nabu.libs.artifacts.api.StoppableArtifact;
 import be.nabu.libs.artifacts.api.TunnelableArtifact;
@@ -67,7 +71,7 @@ import nabu.protocols.jdbc.pool.types.TableDescription;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 
-public class JDBCPoolArtifact extends JAXBArtifact<JDBCPoolConfiguration> implements StartableArtifact, StoppableArtifact, ContextualArtifact, DataSourceWithDialectProviderArtifact, DefinedService, TunnelableArtifact, DataSourceWithAffixes, DataSourceWithTranslator {
+public class JDBCPoolArtifact extends JAXBArtifact<JDBCPoolConfiguration> implements StartableArtifact, StoppableArtifact, ContextualArtifact, DataSourceWithDialectProviderArtifact, DefinedService, TunnelableArtifact, DataSourceWithAffixes, DataSourceWithTranslator, ExternalDependencyArtifact {
 
 	private HikariDataSource dataSource;
 	private Logger logger = LoggerFactory.getLogger(getClass());
@@ -353,7 +357,8 @@ public class JDBCPoolArtifact extends JAXBArtifact<JDBCPoolConfiguration> implem
 	public boolean isAutoCommit() {
 		try {
 			// default is true according to https://github.com/brettwooldridge/HikariCP
-			return getConfiguration().getAutoCommit() == null || getConfiguration().getAutoCommit();
+			// however, in the above (and as default practice) we set autocommit to false, it is _very_ rarely needed and only causes issues if not set correctly
+			return getConfiguration().getAutoCommit() != null && getConfiguration().getAutoCommit();
 		}
 		catch (IOException e) {
 			throw new RuntimeException(e);
@@ -480,6 +485,20 @@ public class JDBCPoolArtifact extends JAXBArtifact<JDBCPoolConfiguration> implem
 	@Override
 	public String getDefaultLanguage() {
 		return getConfig().getDefaultLanguage();
+	}
+
+	@Override
+	public List<ExternalDependency> getExternalDependencies() {
+		ExternalDependencyImpl dependency = new ExternalDependencyImpl();
+		dependency.setArtifactId(getId());
+		try {
+			dependency.setEndpoint(getUri());
+		}
+		catch (URISyntaxException e) {
+			// ignore
+		}
+		dependency.setType("database");
+		return Arrays.asList(dependency);
 	}
 	
 }

@@ -188,7 +188,7 @@ public class Services {
 	}
 
 	@WebResult(name = "tables")
-	public List<TableDescription> listTables(@WebParam(name = "jdbcPoolId") String jdbcPoolId, @WebParam(name = "catalogus") String catalogus, @WebParam(name = "schema") String schema, @WebParam(name = "tablePattern") String tableNamePattern, @WebParam(name = "limitToCurrentSchema") Boolean limitToCurrentSchema) throws SQLException {
+	public List<TableDescription> listTables(@WebParam(name = "jdbcPoolId") String jdbcPoolId, @WebParam(name = "catalogus") String catalogus, @WebParam(name = "schemaPattern") String schema, @WebParam(name = "tablePattern") String tableNamePattern, @WebParam(name = "limitToCurrentSchema") Boolean limitToCurrentSchema) throws SQLException {
 		JDBCPoolArtifact resolve = (JDBCPoolArtifact) EAIResourceRepository.getInstance().resolve(jdbcPoolId);
 		if (resolve == null) {
 			throw new IllegalArgumentException("Could not find pool: " + jdbcPoolId);

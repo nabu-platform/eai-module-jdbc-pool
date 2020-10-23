@@ -1,8 +1,10 @@
 package be.nabu.eai.module.jdbc.context;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
+import java.util.Iterator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
@@ -228,6 +230,72 @@ public class GenerateDatabaseScriptContextMenu implements EntryContextMenuProvid
 					});
 					menu.getItems().addAll(fromDatabase);
 				}
+				MenuItem addItems = new MenuItem("Add Managed Types");
+				addItems.addEventHandler(ActionEvent.ANY, new EventHandler<ActionEvent>() {
+					@Override
+					public void handle(ActionEvent arg0) {
+						List<DefinedType> managedTypes = artifact.getConfig().getManagedTypes();
+						if (managedTypes == null) {
+							managedTypes = new ArrayList<DefinedType>();
+							artifact.getConfig().setManagedTypes(managedTypes);
+						}
+						// remove all null values, they are not useful
+						Iterator<DefinedType> iterator = managedTypes.iterator();
+						while (iterator.hasNext()) {
+							if (iterator.next() == null) {
+								iterator.remove();
+							}
+						}
+						
+						// use the ids to match (don't want different versions affecting this)
+						List<String> ids = new ArrayList<String>();
+						for (DefinedType managed : managedTypes) {
+							ids.add(managed.getId());
+						}
+						int added = 0;
+						for (ComplexType potential : entry.getRepository().getArtifacts(ComplexType.class)) {
+							if (!(potential instanceof DefinedType)) {
+								continue;
+							}
+							String collectionName = ValueUtils.getValue(CollectionNameProperty.getInstance(), potential.getProperties());
+							if (collectionName != null) {
+								// check if we have a parent structure with the same collection name, if that is the case, we skip this one
+								// for example all the restricted types from crud services don't need to be added
+								if (potential.getSuperType() != null) {
+									String parentCollectionName = ValueUtils.getValue(CollectionNameProperty.getInstance(), potential.getSuperType().getProperties());		
+									if (parentCollectionName != null && parentCollectionName.equals(collectionName)) {
+										continue;
+									}
+								}
+								
+								String id = ((DefinedType) potential).getId();
+								if (ids.contains(id)) {
+									continue;
+								}
+								ids.add(id);
+								managedTypes.add((DefinedType) potential);
+								added++;
+							}
+						}
+						if (added > 0) {
+							Confirm.confirm(ConfirmType.INFORMATION, "Adding " + added + " managed types", "Do you want to save the added types?", new EventHandler<ActionEvent>() {
+								@Override
+								public void handle(ActionEvent arg0) {
+									try {
+										new JDBCPoolManager().save((ResourceEntry) entry.getRepository().getEntry(artifact.getId()), artifact);
+									}
+									catch (IOException e) {
+										MainController.getInstance().notify(e);
+									}
+								}
+							});
+						}
+						else {
+							Confirm.confirm(ConfirmType.INFORMATION, "Nothing left to add", "All known collection types are already automanaged", null);
+						}
+					}
+				});
+				menu.getItems().addAll(addItems);
 				return menu;
 			}
 			catch (Exception e) {

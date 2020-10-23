@@ -158,7 +158,7 @@ public static final class ForeignKeyComparator implements Comparator<ComplexType
 	// this does not pick up circular dependencies
 	public static <T> void deepSort(List<T> objects, Comparator<T> comparator) {
 		// do an initial sort
-		Collections.sort(objects, comparator);
+//		Collections.sort(objects, comparator);
 		boolean changed = true;
 		changing: while(changed) {
 			changed = false;
