@@ -157,7 +157,7 @@ public class GenerateDatabaseScriptContextMenu implements EntryContextMenuProvid
 				});
 			}
 			
-			menu.getItems().addAll(create);
+			menu.getItems().addAll(synchronize, create);
 			return menu;
 		}
 		else if (entry.isNode() && ComplexType.class.isAssignableFrom(entry.getNode().getArtifactClass())) {
