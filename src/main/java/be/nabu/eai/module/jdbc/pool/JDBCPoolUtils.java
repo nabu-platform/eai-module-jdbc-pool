@@ -41,6 +41,7 @@ import be.nabu.libs.types.api.DefinedSimpleType;
 import be.nabu.libs.types.api.DefinedType;
 import be.nabu.libs.types.api.Element;
 import be.nabu.libs.types.api.SimpleType;
+import be.nabu.libs.types.api.TypeRegistry;
 import be.nabu.libs.types.base.SimpleElementImpl;
 import be.nabu.libs.types.base.ValueImpl;
 import be.nabu.libs.types.properties.CollectionNameProperty;
@@ -62,7 +63,7 @@ import nabu.protocols.jdbc.pool.types.TableKeyDescription;
 
 public class JDBCPoolUtils {
 	
-public static final class ForeignKeyComparator implements Comparator<ComplexType> {
+	public static final class ForeignKeyComparator implements Comparator<ComplexType> {
 		
 		private boolean reverse;
 		private Map<String, List<String>> foreign = new HashMap<String, List<String>>();
@@ -754,6 +755,33 @@ public static final class ForeignKeyComparator implements Comparator<ComplexType
 		return changed;
 	}
 	
+	public static List<DefinedType> getDefinedCollections(TypeRegistry registry) {
+		List<DefinedType> types = new ArrayList<DefinedType>();
+		for (ComplexType type : getCollections(registry)) {
+			if (type instanceof DefinedType) {
+				types.add((DefinedType) type);
+			}
+		}
+		return types;
+	}
+	
+	public static List<ComplexType> getCollections(TypeRegistry registry) {
+		List<ComplexType> types = new ArrayList<ComplexType>();
+		for (String namespace : registry.getNamespaces()) {
+			for (ComplexType type : registry.getComplexTypes(namespace)) {
+				if (isCollection(type)) {
+					types.add(type);
+				}
+			}
+		}
+		return types;
+	}
+	
+	public static boolean isCollection(ComplexType type) {
+		String value = ValueUtils.getValue(CollectionNameProperty.getInstance(), type.getProperties());
+		return value != null;
+	}
+	
 	// relink the tables with foreign keys
 	public static void relink(JDBCPoolArtifact artifact, List<TableDescription> descriptions) {
 		Map<String, TableDescription> map = new HashMap<String, TableDescription>();
@@ -761,49 +789,47 @@ public static final class ForeignKeyComparator implements Comparator<ComplexType
 			map.put(description.getName(), description);
 		}
 		Map<String, Structure> types = new HashMap<String, Structure>();
-		if (artifact.getConfig().getManagedTypes() != null) {
-			for (DefinedType type : artifact.getConfig().getManagedTypes()) {
-				if (type instanceof Structure) {
-					String collectionName = ValueUtils.getValue(CollectionNameProperty.getInstance(), ((Structure) type).getProperties());
-					if (collectionName != null && map.containsKey(collectionName)) {
-						types.put(collectionName, (Structure) type);
-					}
+		for (DefinedType type : artifact.getManagedTypes()) {
+			if (type instanceof Structure) {
+				String collectionName = ValueUtils.getValue(CollectionNameProperty.getInstance(), ((Structure) type).getProperties());
+				if (collectionName != null && map.containsKey(collectionName)) {
+					types.put(collectionName, (Structure) type);
 				}
 			}
-			for (Map.Entry<String, Structure> entry : types.entrySet()) {
-				boolean changed = false;
-				TableDescription description = map.get(entry.getKey());
-				if (description.getTableReferences() != null) {
-					for (TableKeyDescription reference : description.getTableReferences()) {
-						String localField = NamingConvention.LOWER_CAMEL_CASE.apply(reference.getLocalField());
-						Element<?> element = entry.getValue().get(localField);
-						if (element != null) {
-							// the structure we are referencing
-							Structure structure = types.get(reference.getName());
-							if (structure instanceof DefinedType) {
-								String remoteField = NamingConvention.LOWER_CAMEL_CASE.apply(reference.getRemoteField());
-								Element<?> to = structure.get(remoteField);
-								if (to != null) {
-									String toBe = ((DefinedType) structure).getId() + ":" + to.getName();
-									String asIs = ValueUtils.getValue(ForeignKeyProperty.getInstance(), element.getProperties());
-									if (asIs == null || !asIs.equals(toBe)) {
-										element.setProperty(new ValueImpl<String>(ForeignKeyProperty.getInstance(), toBe));
-										changed = true;
-									}
+		}
+		for (Map.Entry<String, Structure> entry : types.entrySet()) {
+			boolean changed = false;
+			TableDescription description = map.get(entry.getKey());
+			if (description.getTableReferences() != null) {
+				for (TableKeyDescription reference : description.getTableReferences()) {
+					String localField = NamingConvention.LOWER_CAMEL_CASE.apply(reference.getLocalField());
+					Element<?> element = entry.getValue().get(localField);
+					if (element != null) {
+						// the structure we are referencing
+						Structure structure = types.get(reference.getName());
+						if (structure instanceof DefinedType) {
+							String remoteField = NamingConvention.LOWER_CAMEL_CASE.apply(reference.getRemoteField());
+							Element<?> to = structure.get(remoteField);
+							if (to != null) {
+								String toBe = ((DefinedType) structure).getId() + ":" + to.getName();
+								String asIs = ValueUtils.getValue(ForeignKeyProperty.getInstance(), element.getProperties());
+								if (asIs == null || !asIs.equals(toBe)) {
+									element.setProperty(new ValueImpl<String>(ForeignKeyProperty.getInstance(), toBe));
+									changed = true;
 								}
 							}
 						}
 					}
 				}
-				if (changed) {
-					try {
-						new StructureManager().save((ResourceEntry) artifact.getRepository().getEntry(((DefinedType) entry.getValue()).getId()), (DefinedStructure) entry.getValue());
-						MainController.getInstance().getServer().getRemote().reload(((DefinedType) entry.getValue()).getId());
-						MainController.getInstance().getCollaborationClient().updated(((DefinedType) entry.getValue()).getId(), "Relinked managed types");
-					}
-					catch (Exception e) {
-						MainController.getInstance().notify(e);
-					}
+			}
+			if (changed) {
+				try {
+					new StructureManager().save((ResourceEntry) artifact.getRepository().getEntry(((DefinedType) entry.getValue()).getId()), (DefinedStructure) entry.getValue());
+					MainController.getInstance().getServer().getRemote().reload(((DefinedType) entry.getValue()).getId());
+					MainController.getInstance().getCollaborationClient().updated(((DefinedType) entry.getValue()).getId(), "Relinked managed types");
+				}
+				catch (Exception e) {
+					MainController.getInstance().notify(e);
 				}
 			}
 		}

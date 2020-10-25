@@ -52,6 +52,7 @@ import be.nabu.libs.services.pojo.POJOUtils;
 import be.nabu.libs.types.SimpleTypeWrapperFactory;
 import be.nabu.libs.types.api.ComplexType;
 import be.nabu.libs.types.api.DefinedType;
+import be.nabu.libs.types.api.DefinedTypeRegistry;
 import be.nabu.libs.types.api.Element;
 import be.nabu.libs.types.api.SimpleTypeWrapper;
 import be.nabu.libs.types.api.Type;
@@ -136,33 +137,35 @@ public class JDBCPoolArtifact extends JAXBArtifact<JDBCPoolConfiguration> implem
 		}
 		return EAIRepositoryUtils.uncamelify(value);
 	}
-
-	public List<TableChange> synchronizeTypes(boolean force) throws SQLException {
-		List<DefinedType> managedTypes = getConfig().getManagedTypes();
-		List<TableChange> changes = new ArrayList<TableChange>();
-		if (managedTypes != null && !managedTypes.isEmpty()) {
-			List<ComplexType> typesToSync = new ArrayList<ComplexType>();
-			for (DefinedType type : managedTypes) {
-				if (type instanceof ComplexType) {
-					// we need to make sure we create them in the correct order
-					List<ComplexType> localTypes = new ArrayList<ComplexType>();
-					localTypes.add((ComplexType) type);
-					Type parent = ((Type) type).getSuperType();
-					while (parent instanceof ComplexType) {
-						String collectionName = ValueUtils.getValue(CollectionNameProperty.getInstance(), parent.getProperties());
-						if (collectionName != null) {
-							localTypes.add((ComplexType) parent);
-						}
-						parent = parent.getSuperType();
-					}
-					Collections.reverse(localTypes);
-					for (ComplexType localType : localTypes) {
-						if (!typesToSync.contains(localType)) {
-							typesToSync.add(localType);
+	
+	public List<DefinedType> getManagedTypes() {
+		List<DefinedType> types = new ArrayList<DefinedType>();
+		if (getConfig().getManagedTypes() != null) {
+			types.addAll(getConfig().getManagedTypes());
+		}
+		if (getConfig().getManagedModels() != null) {
+			for (DefinedTypeRegistry registry : getConfig().getManagedModels()) {
+				for (String namespace : registry.getNamespaces()) {
+					for (ComplexType type : registry.getComplexTypes(namespace)) {
+						String collectionName = ValueUtils.getValue(CollectionNameProperty.getInstance(), type.getProperties());
+						if (collectionName != null && type instanceof DefinedType) {
+							types.add((DefinedType) type);
 						}
 					}
 				}
 			}
+		}
+		return types;
+	}
+	
+	public List<TableChange> synchronizeTypes(boolean force) throws SQLException {
+		return synchronizeTypes(force, true, getManagedTypes());
+	}
+	
+	public List<TableChange> synchronizeTypes(boolean force, boolean execute, List<DefinedType> managedTypes) throws SQLException {
+		List<TableChange> changes = new ArrayList<TableChange>();
+		if (managedTypes != null && !managedTypes.isEmpty()) {
+			List<ComplexType> typesToSync = getTableTypes(managedTypes);
 			Connection connection = getDataSource().getConnection();
 			try {
 				SQLDialect dialect = getDialect();
@@ -207,20 +210,22 @@ public class JDBCPoolArtifact extends JAXBArtifact<JDBCPoolConfiguration> implem
 											if (sql.trim().isEmpty()) {
 												continue;
 											}
-											Statement statement = connection.createStatement();
-											try {
-												logger.info("[" + getId() + "] Dropping existing column: " + column.getName());
-												logger.info(sql);
-												TableChange change = new TableChange();
-												change.setTable(description.getName());
-												change.setColumn(column.getName());
-												change.setScript(sql);
-												change.setReason("Column no longer exists in the definition and we forced the drop");
-												changes.add(change);
-												statement.execute(sql);
-											}
-											finally {
-												statement.close();
+											TableChange change = new TableChange();
+											change.setTable(description.getName());
+											change.setColumn(column.getName());
+											change.setScript(sql);
+											change.setReason("Column no longer exists in the definition and we forced the drop");
+											changes.add(change);
+											if (execute) {
+												Statement statement = connection.createStatement();
+												try {
+													logger.info("[" + getId() + "] Dropping existing column: " + column.getName());
+													logger.info(sql);
+													statement.execute(sql);
+												}
+												finally {
+													statement.close();
+												}
 											}
 										}
 									}
@@ -235,20 +240,22 @@ public class JDBCPoolArtifact extends JAXBArtifact<JDBCPoolConfiguration> implem
 									if (sql.trim().isEmpty()) {
 										continue;
 									}
-									Statement statement = connection.createStatement();
-									try {
-										logger.info("[" + getId() + "] Adding new column: " + newChild.getName());
-										logger.info(sql);
-										TableChange change = new TableChange();
-										change.setTable(description.getName());
-										change.setColumn(newChild.getName());
-										change.setScript(sql);
-										change.setReason("New column was found in the definition");
-										changes.add(change);
-										statement.execute(sql);
-									}
-									finally {
-										statement.close();
+									TableChange change = new TableChange();
+									change.setTable(description.getName());
+									change.setColumn(newChild.getName());
+									change.setScript(sql);
+									change.setReason("New column was found in the definition");
+									changes.add(change);
+									if (execute) {
+										Statement statement = connection.createStatement();
+										try {
+											logger.info("[" + getId() + "] Adding new column: " + newChild.getName());
+											logger.info(sql);
+											statement.execute(sql);
+										}
+										finally {
+											statement.close();
+										}
 									}
 								}
 							}
@@ -260,19 +267,21 @@ public class JDBCPoolArtifact extends JAXBArtifact<JDBCPoolConfiguration> implem
 								if (sql.trim().isEmpty()) {
 									continue;
 								}
-								Statement statement = connection.createStatement();
-								try {
-									logger.info("[" + getId() + "] Adding new table: " + tableName);
-									logger.info(sql);
-									TableChange change = new TableChange();
-									change.setTable(tableName);
-									change.setScript(sql);
-									change.setReason("The table did not yet exist");
-									changes.add(change);
-									statement.execute(sql);
-								}
-								finally {
-									statement.close();
+								TableChange change = new TableChange();
+								change.setTable(tableName);
+								change.setScript(sql);
+								change.setReason("The table did not yet exist");
+								changes.add(change);
+								if (execute) {
+									Statement statement = connection.createStatement();
+									try {
+										logger.info("[" + getId() + "] Adding new table: " + tableName);
+										logger.info(sql);
+										statement.execute(sql);
+									}
+									finally {
+										statement.close();
+									}
 								}
 							}
 						}
@@ -284,7 +293,7 @@ public class JDBCPoolArtifact extends JAXBArtifact<JDBCPoolConfiguration> implem
 						connection.commit();
 					}
 					catch (Exception e) {
-						logger.error("Could not synchronize type: " + ((DefinedType) type).getId(), e);
+						logger.error("Could not synchronize type " + ((DefinedType) type).getId() + " to pool " + getId(), e);
 						connection.rollback();
 					}
 				}
@@ -294,6 +303,32 @@ public class JDBCPoolArtifact extends JAXBArtifact<JDBCPoolConfiguration> implem
 			}
 		}
 		return changes;
+	}
+
+	private List<ComplexType> getTableTypes(List<DefinedType> managedTypes) {
+		List<ComplexType> typesToSync = new ArrayList<ComplexType>();
+		for (DefinedType type : managedTypes) {
+			if (type instanceof ComplexType) {
+				// we need to make sure we create them in the correct order
+				List<ComplexType> localTypes = new ArrayList<ComplexType>();
+				localTypes.add((ComplexType) type);
+				Type parent = ((Type) type).getSuperType();
+				while (parent instanceof ComplexType) {
+					String collectionName = ValueUtils.getValue(CollectionNameProperty.getInstance(), parent.getProperties());
+					if (collectionName != null) {
+						localTypes.add((ComplexType) parent);
+					}
+					parent = parent.getSuperType();
+				}
+				Collections.reverse(localTypes);
+				for (ComplexType localType : localTypes) {
+					if (!typesToSync.contains(localType)) {
+						typesToSync.add(localType);
+					}
+				}
+			}
+		}
+		return typesToSync;
 	}
 	
 	@Override

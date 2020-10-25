@@ -41,6 +41,7 @@ import be.nabu.libs.types.TypeUtils;
 import be.nabu.libs.types.api.ComplexContent;
 import be.nabu.libs.types.api.ComplexType;
 import be.nabu.libs.types.api.DefinedType;
+import be.nabu.libs.types.api.DefinedTypeRegistry;
 import be.nabu.libs.types.api.Element;
 import be.nabu.libs.types.base.ComplexElementImpl;
 import be.nabu.libs.types.properties.CollectionNameProperty;
@@ -51,7 +52,115 @@ public class GenerateDatabaseScriptContextMenu implements EntryContextMenuProvid
 
 	@Override
 	public MenuItem getContext(Entry entry) {
-		if (entry.isNode() && ComplexType.class.isAssignableFrom(entry.getNode().getArtifactClass())) {
+		if (entry.isNode() && DefinedTypeRegistry.class.isAssignableFrom(entry.getNode().getArtifactClass())) {
+			Menu menu = new Menu("SQL");
+			Menu create = new Menu("Create DDL");
+			for (final Class<SQLDialect> clazz : EAIRepositoryUtils.getImplementationsFor(entry.getRepository().getClassLoader(), SQLDialect.class)) {
+				MenuItem createItem = new MenuItem(clazz.getSimpleName());
+				createItem.addEventHandler(ActionEvent.ANY, new EventHandler<ActionEvent>() {
+					@Override
+					public void handle(ActionEvent arg0) {
+						try {
+							List<ComplexType> typesToCreate = new ArrayList<ComplexType>();
+							DefinedTypeRegistry registry = (DefinedTypeRegistry) entry.getNode().getArtifact();
+							for (String namespace : registry.getNamespaces()) {
+								for (ComplexType type : registry.getComplexTypes(namespace)) {
+									if (JDBCPoolUtils.isCollection(type)) {
+										typesToCreate.add(type);
+									}
+								}
+							}
+							JDBCPoolUtils.deepSort(typesToCreate, new JDBCPoolUtils.ForeignKeyComparator(false));
+							
+							StringBuilder builder = new StringBuilder();
+							SQLDialect dialect = clazz.newInstance();
+							for (ComplexType type : typesToCreate) {
+								builder.append(dialect.buildCreateSQL(type));
+								builder.append("\n");
+							}
+							Confirm.confirm(ConfirmType.INFORMATION, "Create All SQL: " + entry.getId(), builder.toString(), null);
+						}
+						catch (Exception e) {
+							e.printStackTrace();
+						}
+					}
+				});
+				create.getItems().add(createItem);
+			}
+			
+			Menu synchronize = new Menu("Synchronize");
+			Menu fromDatabase = new Menu("From database");
+			Menu toDatabase = new Menu("To database");
+			synchronize.getItems().addAll(toDatabase, fromDatabase);
+			for (JDBCPoolArtifact artifact : entry.getRepository().getArtifacts(JDBCPoolArtifact.class)) {
+				if (canEdit(artifact.getId())) {
+					MenuItem toItem = new MenuItem(artifact.getId());
+					toItem.addEventHandler(ActionEvent.ANY, new EventHandler<ActionEvent>() {
+						@Override
+						public void handle(ActionEvent event) {
+							try {
+								if (artifact.getConfig().getManagedModels() == null) {
+									artifact.getConfig().setManagedModels(new ArrayList<DefinedTypeRegistry>());
+								}
+								if (!artifact.getConfig().getManagedModels().contains(entry.getNode().getArtifact())) {
+									artifact.getConfig().getManagedModels().add((DefinedTypeRegistry) entry.getNode().getArtifact());
+									new JDBCPoolManager().save((ResourceEntry) entry.getRepository().getEntry(artifact.getId()), artifact);
+									MainController.getInstance().getRepository().reload(artifact.getId());
+									MainController.getInstance().getServer().getRemote().reload(artifact.getId());
+									MainController.getInstance().getCollaborationClient().updated(artifact.getId(), "Added managed model");
+								}
+								synchronizeManagedTypes(artifact);
+							}
+							catch (Exception e) {
+								MainController.getInstance().notify(e);
+							}
+						}
+					});
+					toDatabase.getItems().add(toItem);
+					try {
+						if (artifact.getConfig().getManagedModels() != null && artifact.getConfig().getManagedModels().contains(entry.getNode().getArtifact())) {
+							MenuItem fromItem = new MenuItem(artifact.getId());
+							fromItem.addEventHandler(ActionEvent.ANY, new EventHandler<ActionEvent>() {
+								@Override
+								public void handle(ActionEvent arg0) {
+									try {
+										synchronizeManagedTypesFromDatabase(artifact, JDBCPoolUtils.getDefinedCollections((DefinedTypeRegistry) entry.getNode().getArtifact()));
+									}
+									catch (Exception e) {
+										MainController.getInstance().notify(e);
+									}
+								}
+							});
+							fromDatabase.getItems().add(fromItem);
+						}
+					}
+					catch (Exception e) {
+						MainController.getInstance().notify(e);
+					}
+				}
+			}
+			toDatabase.getItems().sort(new Comparator<MenuItem>() {
+				@Override
+				public int compare(MenuItem o1, MenuItem o2) {
+					return o1.getText().compareTo(o2.getText());
+				}
+			});
+			if (fromDatabase.getItems().isEmpty()) {
+				synchronize.getItems().remove(fromDatabase);
+			}
+			else {
+				fromDatabase.getItems().sort(new Comparator<MenuItem>() {
+					@Override
+					public int compare(MenuItem o1, MenuItem o2) {
+						return o1.getText().compareTo(o2.getText());
+					}
+				});
+			}
+			
+			menu.getItems().addAll(create);
+			return menu;
+		}
+		else if (entry.isNode() && ComplexType.class.isAssignableFrom(entry.getNode().getArtifactClass())) {
 			Menu menu = new Menu("SQL");
 			Menu create = new Menu("Create DDL");
 			Menu insert = new Menu("Insert DML");
@@ -152,7 +261,7 @@ public class GenerateDatabaseScriptContextMenu implements EntryContextMenuProvid
 					});
 					toDatabase.getItems().add(toItem);
 					try {
-						if (artifact.getConfig().getManagedTypes() != null && artifact.getConfig().getManagedTypes().contains(entry.getNode().getArtifact())) {
+						if (artifact.getManagedTypes().contains(entry.getNode().getArtifact())) {
 							MenuItem fromItem = new MenuItem(artifact.getId());
 							fromItem.addEventHandler(ActionEvent.ANY, new EventHandler<ActionEvent>() {
 								@Override
@@ -214,13 +323,13 @@ public class GenerateDatabaseScriptContextMenu implements EntryContextMenuProvid
 					}
 				});
 				menu.getItems().addAll(toDatabase);
-				if (artifact.getConfig().getManagedTypes() != null && !artifact.getConfig().getManagedTypes().isEmpty()) {
+				if (!artifact.getManagedTypes().isEmpty()) {
 					MenuItem fromDatabase = new MenuItem("From Database");
 					fromDatabase.addEventHandler(ActionEvent.ANY, new EventHandler<ActionEvent>() {
 						@Override
 						public void handle(ActionEvent event) {
 							try {
-								synchronizeManagedTypesFromDatabase(artifact, artifact.getConfig().getManagedTypes());
+								synchronizeManagedTypesFromDatabase(artifact, artifact.getManagedTypes());
 								relinkAll(artifact);
 							}
 							catch (Exception e) {
@@ -230,6 +339,7 @@ public class GenerateDatabaseScriptContextMenu implements EntryContextMenuProvid
 					});
 					menu.getItems().addAll(fromDatabase);
 				}
+				// this is used to add all types, this is generally too much, so we don't offer it anymore, instead use models
 				MenuItem addItems = new MenuItem("Add Managed Types");
 				addItems.addEventHandler(ActionEvent.ANY, new EventHandler<ActionEvent>() {
 					@Override
@@ -292,6 +402,75 @@ public class GenerateDatabaseScriptContextMenu implements EntryContextMenuProvid
 						}
 						else {
 							Confirm.confirm(ConfirmType.INFORMATION, "Nothing left to add", "All known collection types are already automanaged", null);
+						}
+					}
+				});
+				
+				addItems = new MenuItem("Add Managed Models");
+				addItems.addEventHandler(ActionEvent.ANY, new EventHandler<ActionEvent>() {
+					@Override
+					public void handle(ActionEvent arg0) {
+						List<DefinedTypeRegistry> managedModels = artifact.getConfig().getManagedModels();
+						if (managedModels == null) {
+							managedModels = new ArrayList<DefinedTypeRegistry>();
+							artifact.getConfig().setManagedModels(managedModels);
+						}
+						// remove all null values, they are not useful
+						Iterator<DefinedTypeRegistry> iterator = managedModels.iterator();
+						while (iterator.hasNext()) {
+							if (iterator.next() == null) {
+								iterator.remove();
+							}
+						}
+						
+						// use the ids to match (don't want different versions affecting this)
+						List<String> ids = new ArrayList<String>();
+						for (DefinedTypeRegistry managed : managedModels) {
+							ids.add(managed.getId());
+						}
+						List<String> newIds = new ArrayList<String>();
+						List<DefinedTypeRegistry> newModels = new ArrayList<DefinedTypeRegistry>();
+						for (DefinedTypeRegistry potential : entry.getRepository().getArtifacts(DefinedTypeRegistry.class)) {
+							if (ids.contains(potential.getId())) {
+								continue;
+							}
+							if (JDBCPoolUtils.getCollections(potential).isEmpty()) {
+								continue;
+							}
+							// we shouldn't add both
+							if (potential.getId().contains("emodel") && newIds.contains(potential.getId().replaceAll("\\bemodel\\b", "model"))) {
+								String modelId = potential.getId().replaceAll("\\bemodel\\b", "model");
+								newIds.remove(modelId);
+								newModels.remove(entry.getRepository().resolve(modelId));
+							}
+							// already have the model registered, don't add emodel
+							else if (potential.getId().contains("emodel") && ids.contains(potential.getId().replaceAll("\\bemodel\\b", "model"))) {
+								continue;
+							}
+							// already have the model registered, don't add emodel
+							else if (potential.getId().contains("model") && ids.contains(potential.getId().replaceAll("\\bmodel\\b", "emodel"))) {
+								continue;
+							}
+							ids.add(potential.getId());
+							newIds.add(potential.getId());
+							newModels.add(potential);
+						}
+						if (!newModels.isEmpty()) {
+							Confirm.confirm(ConfirmType.INFORMATION, "Adding " + newModels.size() + " managed models", "Do you want to save the added models?\n" + newIds, new EventHandler<ActionEvent>() {
+								@Override
+								public void handle(ActionEvent arg0) {
+									try {
+										artifact.getConfig().getManagedModels().addAll(newModels);
+										new JDBCPoolManager().save((ResourceEntry) entry.getRepository().getEntry(artifact.getId()), artifact);
+									}
+									catch (IOException e) {
+										MainController.getInstance().notify(e);
+									}
+								}
+							});
+						}
+						else {
+							Confirm.confirm(ConfirmType.INFORMATION, "Nothing left to add", "All known data models are already automanaged", null);
 						}
 					}
 				});
@@ -455,30 +634,28 @@ public class GenerateDatabaseScriptContextMenu implements EntryContextMenuProvid
 						});
 						toDatabase.getItems().add(toItem);
 						
-						if (artifact.getConfig().getManagedTypes() != null) {
-							// check if we have any here
-							List<DefinedType> typesToSynchronize = new ArrayList<DefinedType>();
-							for (Entry child : entry) {
-								try {
-									if (child.isNode() && ComplexType.class.isAssignableFrom(child.getNode().getArtifactClass()) && artifact.getConfig().getManagedTypes().contains(child.getNode().getArtifact())) {
-										typesToSynchronize.add((DefinedType) child.getNode().getArtifact());
-									}
-								}
-								catch (Exception e) {
-									MainController.getInstance().notify(e);
+						// check if we have any here
+						List<DefinedType> typesToSynchronize = new ArrayList<DefinedType>();
+						for (Entry child : entry) {
+							try {
+								if (child.isNode() && ComplexType.class.isAssignableFrom(child.getNode().getArtifactClass()) && artifact.getManagedTypes().contains(child.getNode().getArtifact())) {
+									typesToSynchronize.add((DefinedType) child.getNode().getArtifact());
 								}
 							}
-							// if we have types we can resynchronize, allow the option
-							if (!typesToSynchronize.isEmpty()) {
-								MenuItem fromItem = new MenuItem(artifact.getId());
-								fromItem.addEventHandler(ActionEvent.ANY, new EventHandler<ActionEvent>() {
-									@Override
-									public void handle(ActionEvent arg0) {
-										synchronizeManagedTypesFromDatabase(artifact, typesToSynchronize);
-									}
-								});
-								fromDatabase.getItems().add(fromItem);
+							catch (Exception e) {
+								MainController.getInstance().notify(e);
 							}
+						}
+						// if we have types we can resynchronize, allow the option
+						if (!typesToSynchronize.isEmpty()) {
+							MenuItem fromItem = new MenuItem(artifact.getId());
+							fromItem.addEventHandler(ActionEvent.ANY, new EventHandler<ActionEvent>() {
+								@Override
+								public void handle(ActionEvent arg0) {
+									synchronizeManagedTypesFromDatabase(artifact, typesToSynchronize);
+								}
+							});
+							fromDatabase.getItems().add(fromItem);
 						}
 					}
 				}
