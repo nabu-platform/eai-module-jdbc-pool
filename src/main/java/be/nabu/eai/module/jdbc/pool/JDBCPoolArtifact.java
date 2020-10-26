@@ -263,24 +263,36 @@ public class JDBCPoolArtifact extends JAXBArtifact<JDBCPoolConfiguration> implem
 						// the table does not exist
 						else if (describeTables.size() == 0) {
 							String create = dialect.buildCreateSQL(type);
-							for (String sql : create.split(";")) {
-								if (sql.trim().isEmpty()) {
-									continue;
-								}
+							// the default dialect does not generate create scripts
+							if (create == null) {
 								TableChange change = new TableChange();
 								change.setTable(tableName);
-								change.setScript(sql);
-								change.setReason("The table did not yet exist");
+								change.setReason("The table does not yet exist, without a proper dialect a create script can not be provided");
 								changes.add(change);
 								if (execute) {
-									Statement statement = connection.createStatement();
-									try {
-										logger.info("[" + getId() + "] Adding new table: " + tableName);
-										logger.info(sql);
-										statement.execute(sql);
+									throw new RuntimeException("No dialect configured, can not generate correct scripts");
+								}
+							}
+							else {
+								for (String sql : create.split(";")) {
+									if (sql.trim().isEmpty()) {
+										continue;
 									}
-									finally {
-										statement.close();
+									TableChange change = new TableChange();
+									change.setTable(tableName);
+									change.setScript(sql);
+									change.setReason("The table did not yet exist");
+									changes.add(change);
+									if (execute) {
+										Statement statement = connection.createStatement();
+										try {
+											logger.info("[" + getId() + "] Adding new table: " + tableName);
+											logger.info(sql);
+											statement.execute(sql);
+										}
+										finally {
+											statement.close();
+										}
 									}
 								}
 							}
