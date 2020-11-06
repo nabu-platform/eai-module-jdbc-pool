@@ -262,5 +262,4 @@ public class Services {
 		return JDBCPoolUtils.describeTables(catalogus, schema, tableNamePattern, resolve.getDataSource(), limitToCurrentSchema != null && limitToCurrentSchema);
 	}
 
-	
 }

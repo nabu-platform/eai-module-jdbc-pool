@@ -79,7 +79,7 @@ public class JDBCPoolGUIManager extends BaseJAXBComplexGUIManager<JDBCPoolConfig
 		
 		TabPane tabs = new TabPane();
 		tabs.setTabClosingPolicy(TabClosingPolicy.UNAVAILABLE);
-		tabs.setSide(Side.RIGHT);
+		tabs.setSide(Side.BOTTOM);
 		Tab sql = new Tab("SQL");
 		tabs.getTabs().add(sql);
 		ScrollPane sqlScroll = new ScrollPane();

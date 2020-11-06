@@ -17,6 +17,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.Future;
 
 import javax.sql.DataSource;
 
@@ -26,10 +27,14 @@ import org.slf4j.LoggerFactory;
 import be.nabu.eai.api.NamingConvention;
 import be.nabu.eai.developer.MainController;
 import be.nabu.eai.module.types.structure.StructureManager;
+import be.nabu.eai.repository.EAIResourceRepository;
 import be.nabu.eai.repository.api.ResourceEntry;
+import be.nabu.eai.repository.util.SystemPrincipal;
 import be.nabu.libs.property.ValueUtils;
 import be.nabu.libs.property.api.Property;
 import be.nabu.libs.property.api.Value;
+import be.nabu.libs.services.api.Service;
+import be.nabu.libs.services.api.ServiceResult;
 import be.nabu.libs.services.jdbc.JDBCUtils;
 import be.nabu.libs.services.jdbc.api.SQLDialect;
 import be.nabu.libs.types.DefinedTypeResolverFactory;
@@ -646,7 +651,7 @@ public class JDBCPoolUtils {
 						while (primaryKeys.next()) {
 							String columName = primaryKeys.getString("COLUMN_NAME");
 							for (TableColumnDescription column : description.getColumnDescriptions()) {
-								if (column.getName().equals(columName)) {
+								if (column.getName().equalsIgnoreCase(columName)) {
 									column.setUnique(true);
 									column.setPrimary(true);
 								}
@@ -786,14 +791,14 @@ public class JDBCPoolUtils {
 	public static void relink(JDBCPoolArtifact artifact, List<TableDescription> descriptions) {
 		Map<String, TableDescription> map = new HashMap<String, TableDescription>();
 		for (TableDescription description : descriptions) {
-			map.put(description.getName(), description);
+			map.put(description.getName().toLowerCase(), description);
 		}
 		Map<String, Structure> types = new HashMap<String, Structure>();
 		for (DefinedType type : artifact.getManagedTypes()) {
 			if (type instanceof Structure) {
 				String collectionName = ValueUtils.getValue(CollectionNameProperty.getInstance(), ((Structure) type).getProperties());
 				if (collectionName != null && map.containsKey(collectionName)) {
-					types.put(collectionName, (Structure) type);
+					types.put(NamingConvention.UNDERSCORE.apply(collectionName), (Structure) type);
 				}
 			}
 		}
@@ -804,6 +809,7 @@ public class JDBCPoolUtils {
 				for (TableKeyDescription reference : description.getTableReferences()) {
 					String localField = NamingConvention.LOWER_CAMEL_CASE.apply(reference.getLocalField());
 					Element<?> element = entry.getValue().get(localField);
+					System.out.println("Relinking: " + localField + " / " + reference.getRemoteField() + " in " + description.getName());
 					if (element != null) {
 						// the structure we are referencing
 						Structure structure = types.get(reference.getName());
@@ -832,6 +838,38 @@ public class JDBCPoolUtils {
 					MainController.getInstance().notify(e);
 				}
 			}
+		}
+	}
+	
+	@SuppressWarnings("unchecked")
+	public static void relinkAll(JDBCPoolArtifact pool) {
+		try {
+			Service service = (Service) EAIResourceRepository.getInstance().resolve("nabu.protocols.jdbc.pool.Services.listTables");
+			if (service != null) {
+				ComplexContent input = service.getServiceInterface().getInputDefinition().newInstance();
+				input.set("jdbcPoolId", pool.getId());
+				input.set("limitToCurrentSchema", true);
+				Future<ServiceResult> run = EAIResourceRepository.getInstance().getServiceRunner().run(service, EAIResourceRepository.getInstance().newExecutionContext(SystemPrincipal.ROOT), input);
+				ServiceResult serviceResult = run.get();
+				if (serviceResult.getException() != null) {
+					throw serviceResult.getException();
+				}
+				else {
+					List<Object> objects = (List<Object>) serviceResult.getOutput().get("tables");
+					if (objects != null) {
+						List<TableDescription> tables = new ArrayList<TableDescription>();
+						// could be multiple tables if you have for example "node" and "node_other"
+						for (Object object : objects) {
+							TableDescription description = object instanceof TableDescription ? (TableDescription) object : TypeUtils.getAsBean((ComplexContent) object, TableDescription.class);
+							tables.add(description);
+						}
+						JDBCPoolUtils.relink(pool, tables);
+					}
+				}
+			}
+		}
+		catch (Exception e) {
+			MainController.getInstance().notify(e);
 		}
 	}
 }

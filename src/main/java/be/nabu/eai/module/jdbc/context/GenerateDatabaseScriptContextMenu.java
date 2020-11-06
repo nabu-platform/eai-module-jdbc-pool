@@ -330,7 +330,7 @@ public class GenerateDatabaseScriptContextMenu implements EntryContextMenuProvid
 						public void handle(ActionEvent event) {
 							try {
 								synchronizeManagedTypesFromDatabase(artifact, artifact.getManagedTypes());
-								relinkAll(artifact);
+								JDBCPoolUtils.relinkAll(artifact);
 							}
 							catch (Exception e) {
 								MainController.getInstance().notify(e);
@@ -475,6 +475,16 @@ public class GenerateDatabaseScriptContextMenu implements EntryContextMenuProvid
 					}
 				});
 				menu.getItems().addAll(addItems);
+				
+				MenuItem relink = new MenuItem("Relink");
+				relink.addEventHandler(ActionEvent.ANY, new EventHandler<ActionEvent>() {
+					@Override
+					public void handle(ActionEvent arg0) {
+						JDBCPoolUtils.relinkAll(artifact);
+					}
+				});
+				menu.getItems().add(relink);
+				
 				return menu;
 			}
 			catch (Exception e) {
@@ -699,38 +709,6 @@ public class GenerateDatabaseScriptContextMenu implements EntryContextMenuProvid
 			if (serviceResult.getException() != null) {
 				MainController.getInstance().notify(serviceResult.getException());
 			}
-		}
-	}
-	
-	@SuppressWarnings("unchecked")
-	private void relinkAll(JDBCPoolArtifact pool) {
-		try {
-			Service service = (Service) EAIResourceRepository.getInstance().resolve("nabu.protocols.jdbc.pool.Services.listTables");
-			if (service != null) {
-				ComplexContent input = service.getServiceInterface().getInputDefinition().newInstance();
-				input.set("jdbcPoolId", pool.getId());
-				input.set("limitToCurrentSchema", true);
-				Future<ServiceResult> run = EAIResourceRepository.getInstance().getServiceRunner().run(service, EAIResourceRepository.getInstance().newExecutionContext(SystemPrincipal.ROOT), input);
-				ServiceResult serviceResult = run.get();
-				if (serviceResult.getException() != null) {
-					MainController.getInstance().notify(serviceResult.getException());
-				}
-				else {
-					List<Object> objects = (List<Object>) serviceResult.getOutput().get("tables");
-					if (objects != null) {
-						List<TableDescription> tables = new ArrayList<TableDescription>();
-						// could be multiple tables if you have for example "node" and "node_other"
-						for (Object object : objects) {
-							TableDescription description = object instanceof TableDescription ? (TableDescription) object : TypeUtils.getAsBean((ComplexContent) object, TableDescription.class);
-							tables.add(description);
-						}
-						JDBCPoolUtils.relink(pool, tables);
-					}
-				}
-			}
-		}
-		catch (Exception e) {
-			MainController.getInstance().notify(e);
 		}
 	}
 	
