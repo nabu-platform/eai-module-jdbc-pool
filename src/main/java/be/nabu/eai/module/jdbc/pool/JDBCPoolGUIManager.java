@@ -74,12 +74,9 @@ public class JDBCPoolGUIManager extends BaseJAXBComplexGUIManager<JDBCPoolConfig
 		super.display(controller, anchor, artifact);
 		vbox.getChildren().addAll(anchor);
 		
-		ScrollPane scroll = new ScrollPane();
-		scroll.setContent(vbox);
-		
 		TabPane tabs = new TabPane();
 		tabs.setTabClosingPolicy(TabClosingPolicy.UNAVAILABLE);
-		tabs.setSide(Side.BOTTOM);
+		tabs.setSide(Side.RIGHT);
 		Tab sql = new Tab("SQL");
 		tabs.getTabs().add(sql);
 		ScrollPane sqlScroll = new ScrollPane();
@@ -89,9 +86,8 @@ public class JDBCPoolGUIManager extends BaseJAXBComplexGUIManager<JDBCPoolConfig
 		sql.setContent(sqlScroll);
 		
 		Tab configuration = new Tab("Configuration");
-		configuration.setContent(scroll);
+		configuration.setContent(vbox);
 		tabs.getTabs().add(configuration);
-		scroll.setFitToWidth(true);
 		
 		pane.getChildren().add(tabs);
 		

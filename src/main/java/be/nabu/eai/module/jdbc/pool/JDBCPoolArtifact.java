@@ -141,15 +141,24 @@ public class JDBCPoolArtifact extends JAXBArtifact<JDBCPoolConfiguration> implem
 	public List<DefinedType> getManagedTypes() {
 		List<DefinedType> types = new ArrayList<DefinedType>();
 		if (getConfig().getManagedTypes() != null) {
-			types.addAll(getConfig().getManagedTypes());
+			for (DefinedType type : getConfig().getManagedTypes()) {
+				if (type != null && !types.contains(type)) {
+					types.add(type);
+				}
+			}
 		}
 		if (getConfig().getManagedModels() != null) {
 			for (DefinedTypeRegistry registry : getConfig().getManagedModels()) {
-				for (String namespace : registry.getNamespaces()) {
-					for (ComplexType type : registry.getComplexTypes(namespace)) {
-						String collectionName = ValueUtils.getValue(CollectionNameProperty.getInstance(), type.getProperties());
-						if (collectionName != null && type instanceof DefinedType) {
-							types.add((DefinedType) type);
+				if (registry != null) {
+					for (String namespace : registry.getNamespaces()) {
+						for (ComplexType type : registry.getComplexTypes(namespace)) {
+							if (type == null) {
+								continue;
+							}
+							String collectionName = ValueUtils.getValue(CollectionNameProperty.getInstance(), type.getProperties());
+							if (collectionName != null && type instanceof DefinedType && !types.contains((DefinedType) type)) {
+								types.add((DefinedType) type);
+							}
 						}
 					}
 				}
