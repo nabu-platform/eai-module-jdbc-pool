@@ -355,8 +355,6 @@ public class JDBCPoolCollectionManagerFactory implements CollectionManagerFactor
 			jdbcEntry.getNode().setName("Connection");
 			jdbcEntry.saveNode();
 			
-			// we will do a synchronous reload of the jdbc pool because we want to sync the datatypes, which is a server-side operation
-			MainController.getInstance().getServer().getRemote().reload(jdbc.getId());
 			if (information.isMainDatabase()) {
 				// make sure we sync ddls
 				// can take a while, we don't care
@@ -364,6 +362,8 @@ public class JDBCPoolCollectionManagerFactory implements CollectionManagerFactor
 					@Override
 					public void run() {
 						try {
+							// we will do a synchronous reload of the jdbc pool because we want to sync the datatypes, which is a server-side operation
+							MainController.getInstance().getServer().getRemote().reload(jdbc.getId());
 							GenerateDatabaseScriptContextMenu.synchronizeManagedTypes(jdbc);
 						} 
 						catch (Exception e) {
@@ -376,6 +376,9 @@ public class JDBCPoolCollectionManagerFactory implements CollectionManagerFactor
 						}
 					}
 				}).start();
+			}
+			else {
+				MainController.getInstance().getAsynchronousRemoteServer().reload(jdbc.getId());
 			}
 		}
 		catch (Exception e) {
