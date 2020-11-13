@@ -368,7 +368,7 @@ public class JDBCPoolArtifact extends JAXBArtifact<JDBCPoolConfiguration> implem
 	private Properties getAsProperties() throws IOException {
 		Properties properties = new Properties();
 		setIfNotNull(properties, "driverClassName", getConfiguration().getDriverClassName());
-		setIfNotNull(properties, "jdbcUrl", getConfiguration().getJdbcUrl());
+		setIfNotNull(properties, "jdbcUrl", getJdbcUrl());
 		setIfNotNull(properties, "username", getConfiguration().getUsername());
 		setIfNotNull(properties, "password", getConfiguration().getPassword());
 		setIfNotNull(properties, "connectionTimeout", getConfiguration().getConnectionTimeout());
@@ -486,9 +486,17 @@ public class JDBCPoolArtifact extends JAXBArtifact<JDBCPoolConfiguration> implem
 			throw new RuntimeException(e);
 		}
 	}
+	
+	private String getJdbcUrl() {
+		String jdbcUrl = getConfig().getJdbcUrl();
+		if (jdbcUrl != null && jdbcUrl.contains("~")) {
+			jdbcUrl = jdbcUrl.replace("~", System.getProperty("user.home"));
+		}
+		return jdbcUrl;
+	}
 
 	private URI getUri() throws URISyntaxException {
-		URI uri = new URI(URIUtils.encodeURI(getConfig().getJdbcUrl()));
+		URI uri = new URI(URIUtils.encodeURI(getJdbcUrl()));
 		if (uri.getScheme().equalsIgnoreCase("jdbc")) {
 			uri = new URI(URIUtils.encodeURI(uri.getSchemeSpecificPart()));
 		}
