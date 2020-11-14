@@ -211,7 +211,7 @@ public class JDBCPoolCollectionManagerFactory implements CollectionManagerFactor
 												
 												VBox message = new VBox();
 												message.setAlignment(Pos.CENTER);
-												message.getChildren().add(MainController.loadGraphic("dialog/success.png"));
+												message.getChildren().add(MainController.loadGraphic("dialog/dialog-success.png"));
 												Label label = new Label("Database successfully set up");
 												label.getStyleClass().add("p");
 												message.getChildren().add(label);

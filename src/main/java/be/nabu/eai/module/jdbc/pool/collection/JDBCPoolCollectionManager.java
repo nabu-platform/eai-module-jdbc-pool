@@ -1,11 +1,18 @@
 package be.nabu.eai.module.jdbc.pool.collection;
 
+import java.io.IOException;
+
 import be.nabu.eai.developer.MainController;
 import be.nabu.eai.developer.api.CollectionManager;
 import be.nabu.eai.developer.impl.CustomTooltip;
+import be.nabu.eai.developer.util.Confirm;
+import be.nabu.eai.developer.util.EAIDeveloperUtils;
+import be.nabu.eai.developer.util.Confirm.ConfirmType;
 import be.nabu.eai.module.data.model.DataModelArtifact;
 import be.nabu.eai.module.jdbc.pool.JDBCPoolArtifact;
 import be.nabu.eai.repository.api.Entry;
+import be.nabu.eai.repository.api.ExtensibleEntry;
+import be.nabu.eai.repository.api.ModifiableEntry;
 import javafx.event.ActionEvent;
 import javafx.event.EventHandler;
 import javafx.geometry.Pos;
@@ -55,11 +62,29 @@ public class JDBCPoolCollectionManager implements CollectionManager {
 		edit.setGraphic(MainController.loadFixedSizeGraphic("icons/edit.png", 16));
 		new CustomTooltip("Edit the database details").install(edit);
 		buttons.getChildren().add(edit);
+		// TODO: de edit nog
 		
 		Button remove = new Button();
 		remove.setGraphic(MainController.loadFixedSizeGraphic("icons/delete.png", 16));
 		new CustomTooltip("Remove the database").install(remove);
 		buttons.getChildren().add(remove);
+		remove.addEventHandler(ActionEvent.ANY, new EventHandler<ActionEvent>() {
+			@Override
+			public void handle(ActionEvent arg0) {
+				Confirm.confirm(ConfirmType.WARNING, "Delete " + entry.getName(), "Are you sure you want to delete this database connection? This action can not be undone.", new EventHandler<ActionEvent>() {
+					@Override
+					public void handle(ActionEvent arg0) {
+						try {
+							((ExtensibleEntry) entry.getParent()).deleteChild(entry.getName(), true);
+							EAIDeveloperUtils.deleted(entry.getId());
+						}
+						catch (IOException e) {
+							MainController.getInstance().notify(e);
+						}
+					}
+				});
+			}
+		});
 		
 		JDBCPoolArtifact chosen = null;
 		for (JDBCPoolArtifact pool : entry.getRepository().getArtifacts(JDBCPoolArtifact.class)) {
