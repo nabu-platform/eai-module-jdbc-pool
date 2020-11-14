@@ -84,7 +84,7 @@ public class JDBCPoolCollectionManagerFactory implements CollectionManagerFactor
 	}
 	
 	@Override
-	public List<CollectionAction> getActionsFor(Entry entry, Runnable runner) {
+	public List<CollectionAction> getActionsFor(Entry entry) {
 		List<CollectionAction> actions = new ArrayList<CollectionAction>();
 		Collection collection = entry.getCollection();
 		if (collection != null && collection.getType().equals("project")) {
@@ -222,7 +222,6 @@ public class JDBCPoolCollectionManagerFactory implements CollectionManagerFactor
 													public void run() {
 														MainController.getInstance().getRepositoryBrowser().refresh();
 														stage.sizeToScene();
-														runner.run();
 													}
 												});
 											}
@@ -260,7 +259,7 @@ public class JDBCPoolCollectionManagerFactory implements CollectionManagerFactor
 
 	private RepositoryEntry createDatabaseEntry(RepositoryEntry project, String name, String prettyName) throws IOException {
 		Entry child = getDatabasesEntry(project);
-		Entry target = ((RepositoryEntry) child).createDirectory(name);
+		Entry target = EAIDeveloperUtils.mkdir((RepositoryEntry) child, name);
 		CollectionImpl collection = new CollectionImpl();
 		collection.setType("database");
 		collection.setName(prettyName);
@@ -271,11 +270,7 @@ public class JDBCPoolCollectionManagerFactory implements CollectionManagerFactor
 	}
 
 	private Entry getDatabasesEntry(RepositoryEntry project) throws IOException {
-		Entry child = project.getChild("database");
-		if (child == null) {
-			child = project.createDirectory("database");
-			EAIDeveloperUtils.reload(project.getId());
-		}
+		Entry child = EAIDeveloperUtils.mkdir(project, "database");
 		if (!child.isCollection()) {
 			CollectionImpl collection = new CollectionImpl();
 			collection.setType("folder");
@@ -289,7 +284,6 @@ public class JDBCPoolCollectionManagerFactory implements CollectionManagerFactor
 	private <T> void create(Entry project, BasicInformation information, JDBCPoolWizard<T> wizard, T properties) {
 		try {
 			RepositoryEntry jdbcEntry = createDatabaseEntry((RepositoryEntry) project, information.getCorrectName(), information.getName());
-			EAIDeveloperUtils.reloadParent(jdbcEntry.getId());
 			
 			JDBCPoolArtifact jdbc = wizard.apply(project, jdbcEntry, properties, true, information.isMainDatabase());
 			
@@ -300,6 +294,7 @@ public class JDBCPoolCollectionManagerFactory implements CollectionManagerFactor
 			DataModelArtifact model = new DataModelArtifact(dataModelEntry.getId(), dataModelEntry.getContainer(), dataModelEntry.getRepository());
 			model.getConfig().setType(DataModelType.DATABASE);
 			new DataModelManager().save(dataModelEntry, model);
+			EAIDeveloperUtils.updated(jdbcEntry.getId());
 			
 			// if it is a main database, we prefill it with all the necessary things
 			if (information.isMainDatabase()) {
