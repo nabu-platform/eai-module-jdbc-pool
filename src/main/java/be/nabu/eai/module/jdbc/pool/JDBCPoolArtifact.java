@@ -21,6 +21,8 @@ import javax.sql.DataSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import be.nabu.eai.module.data.model.DataModelArtifact;
+import be.nabu.eai.module.data.model.DataModelEntry;
 import be.nabu.eai.repository.EAIRepositoryUtils;
 import be.nabu.eai.repository.api.Repository;
 import be.nabu.eai.repository.artifacts.jaxb.JAXBArtifact;
@@ -55,6 +57,7 @@ import be.nabu.libs.types.api.DefinedType;
 import be.nabu.libs.types.api.DefinedTypeRegistry;
 import be.nabu.libs.types.api.Element;
 import be.nabu.libs.types.api.SimpleTypeWrapper;
+import be.nabu.libs.types.api.SynchronizableTypeRegistry;
 import be.nabu.libs.types.api.Type;
 import be.nabu.libs.types.base.ComplexElementImpl;
 import be.nabu.libs.types.base.SimpleElementImpl;
@@ -155,9 +158,15 @@ public class JDBCPoolArtifact extends JAXBArtifact<JDBCPoolConfiguration> implem
 							if (type == null) {
 								continue;
 							}
-							String collectionName = ValueUtils.getValue(CollectionNameProperty.getInstance(), type.getProperties());
-							if (collectionName != null && type instanceof DefinedType && !types.contains((DefinedType) type)) {
-								types.add((DefinedType) type);
+							boolean synchronize = true;
+							if (registry instanceof SynchronizableTypeRegistry) {
+								synchronize = ((SynchronizableTypeRegistry) registry).isSynchronizable(type);
+							}
+							if (synchronize) {
+								String collectionName = ValueUtils.getValue(CollectionNameProperty.getInstance(), type.getProperties());
+								if (collectionName != null && type instanceof DefinedType && !types.contains((DefinedType) type)) {
+									types.add((DefinedType) type);
+								}
 							}
 						}
 					}
