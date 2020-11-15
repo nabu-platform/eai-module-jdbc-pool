@@ -176,9 +176,11 @@ public class JDBCPoolCollectionManagerFactory implements CollectionManagerFactor
 									cancel.addEventHandler(ActionEvent.ANY, new EventHandler<ActionEvent>() {
 										@Override
 										public void handle(ActionEvent arg0) {
-											root.getChildren().clear();
-											root.getChildren().addAll(previous);
-											stage.sizeToScene();
+											// this jumps back to the previous screen, but that is actually annoying mostly
+//											root.getChildren().clear();
+//											root.getChildren().addAll(previous);
+//											stage.sizeToScene();
+											stage.close();
 										}
 									});
 									create.addEventHandler(ActionEvent.ANY, new EventHandler<ActionEvent>() {
@@ -351,26 +353,7 @@ public class JDBCPoolCollectionManagerFactory implements CollectionManagerFactor
 			jdbcEntry.saveNode();
 			
 			if (information.isMainDatabase()) {
-				// make sure we sync ddls
-				// can take a while, we don't care
-				new Thread(new Runnable() {
-					@Override
-					public void run() {
-						try {
-							// we will do a synchronous reload of the jdbc pool because we want to sync the datatypes, which is a server-side operation
-							MainController.getInstance().getServer().getRemote().reload(jdbc.getId());
-							GenerateDatabaseScriptContextMenu.synchronizeManagedTypes(jdbc);
-						} 
-						catch (Exception e) {
-							Platform.runLater(new Runnable() {
-								@Override
-								public void run() {
-									MainController.getInstance().notify(e);
-								}
-							});
-						}
-					}
-				}).start();
+				synchronize(jdbc);
 			}
 			else {
 				MainController.getInstance().getAsynchronousRemoteServer().reload(jdbc.getId());
@@ -379,5 +362,28 @@ public class JDBCPoolCollectionManagerFactory implements CollectionManagerFactor
 		catch (Exception e) {
 			throw new RuntimeException(e);
 		}
+	}
+
+	public static void synchronize(JDBCPoolArtifact jdbc) {
+		// make sure we sync ddls
+		// can take a while, we don't care
+		new Thread(new Runnable() {
+			@Override
+			public void run() {
+				try {
+					// we will do a synchronous reload of the jdbc pool because we want to sync the datatypes, which is a server-side operation
+					MainController.getInstance().getServer().getRemote().reload(jdbc.getId());
+					GenerateDatabaseScriptContextMenu.synchronizeManagedTypes(jdbc);
+				} 
+				catch (Exception e) {
+					Platform.runLater(new Runnable() {
+						@Override
+						public void run() {
+							MainController.getInstance().notify(e);
+						}
+					});
+				}
+			}
+		}).start();
 	}
 }

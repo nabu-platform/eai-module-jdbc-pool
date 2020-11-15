@@ -15,7 +15,7 @@ public class BasicInformation {
 	public void setMainDatabase(boolean mainDatabase) {
 		this.mainDatabase = mainDatabase;
 	}
-	@Field(comment = "The name of the database", hide = "mainDatabase")
+	@Field(comment = "The name of the database.", hide = "mainDatabase")
 	public String getName() {
 		return name;
 	}

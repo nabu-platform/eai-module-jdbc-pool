@@ -11,10 +11,12 @@ import be.nabu.eai.developer.util.EAIDeveloperUtils;
 import be.nabu.eai.developer.util.Confirm.ConfirmType;
 import be.nabu.eai.module.data.model.DataModelArtifact;
 import be.nabu.eai.module.jdbc.pool.JDBCPoolArtifact;
+import be.nabu.eai.module.jdbc.pool.JDBCPoolManager;
 import be.nabu.eai.module.jdbc.pool.api.JDBCPoolWizard;
 import be.nabu.eai.repository.api.Entry;
 import be.nabu.eai.repository.api.ExtensibleEntry;
 import be.nabu.eai.repository.api.ResourceEntry;
+import be.nabu.eai.repository.resources.RepositoryEntry;
 import javafx.event.ActionEvent;
 import javafx.event.EventHandler;
 import javafx.geometry.Insets;
@@ -96,6 +98,8 @@ public class JDBCPoolCollectionManager implements CollectionManager {
 		new CustomTooltip("Edit the database details").install(edit);
 		buttons.getChildren().add(edit);
 		
+		Entry project = EAIDeveloperUtils.getProject(entry);
+		
 		// TODO: de edit nog
 		edit.addEventHandler(ActionEvent.ANY, new EventHandler<ActionEvent>() {
 			@Override
@@ -141,14 +145,34 @@ public class JDBCPoolCollectionManager implements CollectionManager {
 							}
 						});
 						update.addEventHandler(ActionEvent.ANY, new EventHandler<ActionEvent>() {
+							@SuppressWarnings("unchecked")
 							@Override
 							public void handle(ActionEvent arg0) {
-								// you renamed it! damn you!
-								if (originalName == null && basicInformation.getName() != null || (originalName != null && !originalName.equals(basicInformation.getName()))) {
-									String rename = MainController.getInstance().rename((ResourceEntry) entry, basicInformation.getName() == null || basicInformation.getName().trim().isEmpty() ? "Database" : basicInformation.getName());
-									entry = entry.getParent().getChild(rename);
+								// first we update any settings you might have
+								Entry jdbcEntry = entry.getRepository().getEntry(chosenFinal.getId());
+								boolean isMain = project.getId().equals(chosenFinal.getConfig().getContext());
+								// keep track of the origianl jdbc connection, if it changes we may need to trigger a resync
+								String originalJdbc = chosenFinal.getConfig().getJdbcUrl();
+								JDBCPoolArtifact applied = chosenWizardFinal.apply(project, (RepositoryEntry) jdbcEntry, properties, false, isMain);
+								try {
+									new JDBCPoolManager().save((ResourceEntry) jdbcEntry, applied);
+									EAIDeveloperUtils.updated(jdbcEntry.getId());
+									
+									// then we do a rename (if necessary), cause that will cause a refresh, we need a new jdbc pool etc etc
+									// you renamed it! damn you!
+									if (originalName == null && basicInformation.getName() != null || (originalName != null && !originalName.equals(basicInformation.getName()))) {
+										String rename = MainController.getInstance().rename((ResourceEntry) entry, basicInformation.getName() == null || basicInformation.getName().trim().isEmpty() ? "Database" : basicInformation.getName());
+										entry = entry.getParent().getChild(rename);
+									}
+									
+									// we do the synchronize after any potential renames! so the server sees the correct shizzle
+									if (isMain && applied.getConfig().getJdbcUrl() != null && !applied.getConfig().getJdbcUrl().equals(originalJdbc)) {
+										JDBCPoolCollectionManagerFactory.synchronize(applied);
+									}
 								}
-								// TODO: update and save!
+								catch (IOException e) {
+									MainController.getInstance().notify(e);
+								}
 								
 								stage.close();
 							}
