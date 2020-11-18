@@ -283,11 +283,21 @@ public class JDBCPoolCollectionManagerFactory implements CollectionManagerFactor
 		return child;
 	}
 	
+	public static void setMainContext(JDBCPoolArtifact jdbc, Entry project) {
+		// TODO: scrape that no one already has the nabu context!
+		jdbc.getConfig().setContext(project.getId() + ", nabu");
+	}
+	
 	private <T> void create(Entry project, BasicInformation information, JDBCPoolWizard<T> wizard, T properties) {
 		try {
 			RepositoryEntry jdbcEntry = createDatabaseEntry((RepositoryEntry) project, information.getCorrectName(), information.getName());
 			
 			JDBCPoolArtifact jdbc = wizard.apply(project, jdbcEntry, properties, true, information.isMainDatabase());
+
+			// for main databases, we set the context for the project and for nabu as well
+			if (information.isMainDatabase()) {
+				setMainContext(jdbc, project);
+			}
 			
 			// create data model, we always do this (main database or not)
 			RepositoryEntry dataModelEntry = jdbcEntry.getParent().createNode("model", new DataModelManager(), true);

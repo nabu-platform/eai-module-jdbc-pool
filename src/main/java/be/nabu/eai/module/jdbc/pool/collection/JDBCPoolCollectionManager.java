@@ -1,6 +1,7 @@
 package be.nabu.eai.module.jdbc.pool.collection;
 
 import java.io.IOException;
+import java.util.Arrays;
 
 import be.nabu.eai.developer.MainController;
 import be.nabu.eai.developer.api.CollectionManager;
@@ -150,7 +151,7 @@ public class JDBCPoolCollectionManager implements CollectionManager {
 							public void handle(ActionEvent arg0) {
 								// first we update any settings you might have
 								Entry jdbcEntry = entry.getRepository().getEntry(chosenFinal.getId());
-								boolean isMain = project.getId().equals(chosenFinal.getConfig().getContext());
+								boolean isMain = chosenFinal.getConfig().getContext() != null && Arrays.asList(chosenFinal.getConfig().getContext().split("[\\s]*,[\\s]*")).contains(project.getId());
 								// keep track of the origianl jdbc connection, if it changes we may need to trigger a resync
 								String originalJdbc = chosenFinal.getConfig().getJdbcUrl();
 								JDBCPoolArtifact applied = chosenWizardFinal.apply(project, (RepositoryEntry) jdbcEntry, properties, false, isMain);
