@@ -47,39 +47,19 @@ public class JDBCPoolCollectionManager implements CollectionManager {
 
 	@Override
 	public Node getSummaryView() {
-		JDBCPoolArtifact chosen = null;
-		for (JDBCPoolArtifact pool : entry.getRepository().getArtifacts(JDBCPoolArtifact.class)) {
-			if (pool.getId().startsWith(entry.getId() + ".")) {
-				chosen = pool;
-				break;
-			}
+		JDBCPoolArtifact chosen = getPool();
+		// no pool found!
+		if (chosen == null) {
+			return null;
 		}
 		
-		JDBCPoolArtifact chosenFinal = chosen;
-		
-		JDBCPoolWizard chosenWizard = null;
-		for (JDBCPoolWizard wizard : JDBCPoolCollectionManagerFactory.getPoolWizards()) {
-			Object properties = wizard.load(chosenFinal);
-			// we gots us the correct wizard!
-			if (properties != null) {
-				chosenWizard = wizard;
-				break;
-			}
+		JDBCPoolWizard chosenWizard = getWizard(chosen);
+		// not a supported type!
+		if (chosenWizard == null) {
+			return null;
 		}
 		
-		JDBCPoolWizard chosenWizardFinal = chosenWizard;
-		
-		VBox box = new VBox();
-		box.getStyleClass().addAll("collection-summary");
-		box.setAlignment(Pos.CENTER);
-		Label title = new Label(entry.getCollection().getName() == null ? entry.getName() : entry.getCollection().getName());
-		title.getStyleClass().add("collection-title");
-		box.getChildren().addAll(title, MainController.loadFixedSizeGraphic(chosenWizardFinal == null || chosenWizardFinal.getIcon() == null ? "database-big.png" : chosenWizardFinal.getIcon(), 64));
-		if (chosenWizardFinal != null) {
-			Label driver = new Label(chosenWizardFinal.getName());
-			driver.getStyleClass().add("subscript");
-			box.getChildren().add(driver);
-		}
+		VBox box = getLargeIcon(chosenWizard);
 		HBox buttons = new HBox();
 		buttons.getStyleClass().add("collection-buttons");
 		box.getChildren().add(buttons);
@@ -101,12 +81,11 @@ public class JDBCPoolCollectionManager implements CollectionManager {
 		
 		Entry project = EAIDeveloperUtils.getProject(entry);
 		
-		// TODO: de edit nog
 		edit.addEventHandler(ActionEvent.ANY, new EventHandler<ActionEvent>() {
 			@Override
 			public void handle(ActionEvent arg0) {
 				try {
-					String originalName = entry.getCollection().getName() == null ? entry.getName() : entry.getCollection().getName();
+					String originalName = entry.getCollection() == null || entry.getCollection().getName() == null ? entry.getName() : entry.getCollection().getName();
 					VBox root = new VBox();
 					Stage stage = EAIDeveloperUtils.buildPopup("Configure Database", root, MainController.getInstance().getStage(), StageStyle.DECORATED, false);
 					root.getStyleClass().addAll("collection-form", "project");
@@ -115,7 +94,7 @@ public class JDBCPoolCollectionManager implements CollectionManager {
 					wizardTitle.getStyleClass().add("h2");
 					root.getChildren().add(wizardTitle);
 					
-					if (chosenWizardFinal != null) {
+					if (chosenWizard != null) {
 						BasicInformation basicInformation = new BasicInformation();
 						basicInformation.setHideMainOption(true);
 						basicInformation.setName(originalName);
@@ -127,7 +106,7 @@ public class JDBCPoolCollectionManager implements CollectionManager {
 						VBox.setMargin(separator, new Insets(20, 0, 20, 0));
 						root.getChildren().addAll(general, separator);
 						
-						Object properties = chosenWizardFinal.load(chosenFinal);
+						Object properties = chosenWizard.load(chosen);
 						VBox target = new VBox();
 						updater = EAIDeveloperUtils.createUpdater(properties, null);
 						MainController.getInstance().showProperties(updater, target, true);
@@ -150,11 +129,11 @@ public class JDBCPoolCollectionManager implements CollectionManager {
 							@Override
 							public void handle(ActionEvent arg0) {
 								// first we update any settings you might have
-								Entry jdbcEntry = entry.getRepository().getEntry(chosenFinal.getId());
-								boolean isMain = chosenFinal.getConfig().getContext() != null && Arrays.asList(chosenFinal.getConfig().getContext().split("[\\s]*,[\\s]*")).contains(project.getId());
+								Entry jdbcEntry = entry.getRepository().getEntry(chosen.getId());
+								boolean isMain = chosen.getConfig().getContext() != null && Arrays.asList(chosen.getConfig().getContext().split("[\\s]*,[\\s]*")).contains(project.getId());
 								// keep track of the origianl jdbc connection, if it changes we may need to trigger a resync
-								String originalJdbc = chosenFinal.getConfig().getJdbcUrl();
-								JDBCPoolArtifact applied = chosenWizardFinal.apply(project, (RepositoryEntry) jdbcEntry, properties, false, isMain);
+								String originalJdbc = chosen.getConfig().getJdbcUrl();
+								JDBCPoolArtifact applied = chosenWizard.apply(project, (RepositoryEntry) jdbcEntry, properties, false, isMain);
 								try {
 									new JDBCPoolManager().save((ResourceEntry) jdbcEntry, applied);
 									EAIDeveloperUtils.updated(jdbcEntry.getId());
@@ -214,7 +193,7 @@ public class JDBCPoolCollectionManager implements CollectionManager {
 		openConnection.addEventHandler(ActionEvent.ANY, new EventHandler<ActionEvent>() {
 			@Override
 			public void handle(ActionEvent arg0) {
-				MainController.getInstance().open(chosenFinal.getId());
+				MainController.getInstance().open(chosen.getId());
 			}
 		});
 		// if no chosen, we can't open it
@@ -240,5 +219,63 @@ public class JDBCPoolCollectionManager implements CollectionManager {
 		
 		return box;
 	}
+
+	private JDBCPoolWizard getWizard(JDBCPoolArtifact chosen) {
+		JDBCPoolWizard chosenWizard = null;
+		for (JDBCPoolWizard wizard : JDBCPoolCollectionManagerFactory.getPoolWizards()) {
+			Object properties = wizard.load(chosen);
+			// we gots us the correct wizard!
+			if (properties != null) {
+				chosenWizard = wizard;
+				break;
+			}
+		}
+		return chosenWizard;
+	}
+
+	private JDBCPoolArtifact getPool() {
+		JDBCPoolArtifact chosen = null;
+		for (JDBCPoolArtifact pool : entry.getRepository().getArtifacts(JDBCPoolArtifact.class)) {
+			if (pool.getId().startsWith(entry.getId() + ".")) {
+				chosen = pool;
+				break;
+			}
+		}
+		return chosen;
+	}
+
+	private VBox getLargeIcon(JDBCPoolWizard chosenWizardFinal) {
+		VBox box = new VBox();
+		box.getStyleClass().addAll("collection-summary");
+		box.setAlignment(Pos.CENTER);
+		Label title = new Label(entry.getCollection() == null || entry.getCollection().getName() == null ? entry.getName() : entry.getCollection().getName());
+		title.getStyleClass().add("collection-title");
+		box.getChildren().addAll(title, MainController.loadFixedSizeGraphic(chosenWizardFinal == null || chosenWizardFinal.getIcon() == null ? "database-big.png" : chosenWizardFinal.getIcon(), 64));
+		if (chosenWizardFinal != null) {
+			Label driver = new Label(chosenWizardFinal.getName());
+			driver.getStyleClass().add("subscript");
+			box.getChildren().add(driver);
+		}
+		return box;
+	}
+
+	@Override
+	public boolean hasLargeIcon() {
+		return true;
+	}
+
+	@Override
+	public Node getLargeIcon() {
+		JDBCPoolArtifact pool = getPool();
+		if (pool == null) {
+			return null;
+		}
+		JDBCPoolWizard wizard = getWizard(pool);
+		if (wizard == null) {
+			return null;
+		}
+		return getLargeIcon(wizard);
+	}
+
 	
 }

@@ -53,10 +53,16 @@ public class JDBCPoolCollectionManagerFactory implements CollectionManagerFactor
 
 	@Override
 	public CollectionManager getCollectionManager(Entry entry) {
-		Collection collection = entry.getCollection();
-		if (collection != null && collection.getType().equals("database")) {
-			return new JDBCPoolCollectionManager(entry);
+		// any folder that contains a JDBC connection is considered a database collection
+		for (Entry child : entry) {
+			if (child.isNode() && JDBCPoolArtifact.class.isAssignableFrom(child.getNode().getArtifactClass())) {
+				return new JDBCPoolCollectionManager(entry);
+			}
 		}
+//		Collection collection = entry.getCollection();
+//		if (collection != null && collection.getType().equals("database")) {
+//			return new JDBCPoolCollectionManager(entry);
+//		}
 		return null;
 	}
 
