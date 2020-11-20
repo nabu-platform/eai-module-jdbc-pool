@@ -277,5 +277,9 @@ public class JDBCPoolCollectionManager implements CollectionManager {
 		return getLargeIcon(wizard);
 	}
 
+	@Override
+	public Entry getEntry() {
+		return entry;
+	}
 	
 }
