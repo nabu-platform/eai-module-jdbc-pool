@@ -5,6 +5,7 @@ import java.util.Arrays;
 
 import be.nabu.eai.developer.MainController;
 import be.nabu.eai.developer.api.CollectionManager;
+import be.nabu.eai.developer.collection.EAICollectionUtils;
 import be.nabu.eai.developer.impl.CustomTooltip;
 import be.nabu.eai.developer.managers.util.SimplePropertyUpdater;
 import be.nabu.eai.developer.util.Confirm;
@@ -79,7 +80,7 @@ public class JDBCPoolCollectionManager implements CollectionManager {
 		new CustomTooltip("Edit the database details").install(edit);
 		buttons.getChildren().add(edit);
 		
-		Entry project = EAIDeveloperUtils.getProject(entry);
+		Entry project = EAICollectionUtils.getProject(entry);
 		
 		edit.addEventHandler(ActionEvent.ANY, new EventHandler<ActionEvent>() {
 			@Override

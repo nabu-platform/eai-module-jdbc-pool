@@ -316,7 +316,9 @@ public class JDBCPoolCollectionManagerFactory implements CollectionManagerFactor
 			
 			// if it is a main database, we prefill it with all the necessary things
 			if (information.isMainDatabase()) {
-				// autosync all collection-named complex types
+				// autosync all collection-named complex types for the main database
+				// we don't do this for non-main databases as you are likely not master of the datamodel there!
+				// you can still add types to that model from the database
 				if (jdbc.getConfig().getManagedModels() == null) {
 					jdbc.getConfig().setManagedModels(new ArrayList<DefinedTypeRegistry>());
 				}
