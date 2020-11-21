@@ -61,6 +61,7 @@ public class JDBCPoolCollectionManager implements CollectionManager {
 		}
 		
 		VBox box = getLargeIcon(chosenWizard);
+		box.getStyleClass().add("tile-medium");
 		HBox buttons = new HBox();
 		buttons.getStyleClass().add("collection-buttons");
 		box.getChildren().add(buttons);

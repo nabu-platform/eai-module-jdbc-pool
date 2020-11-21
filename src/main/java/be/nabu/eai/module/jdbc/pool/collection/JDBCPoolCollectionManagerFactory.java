@@ -95,7 +95,7 @@ public class JDBCPoolCollectionManagerFactory implements CollectionManagerFactor
 		Collection collection = entry.getCollection();
 		if (collection != null && collection.getType().equals("project")) {
 			VBox box = new VBox();
-			box.getStyleClass().add("collection-action");
+			box.getStyleClass().addAll("collection-action", "tile-xsmall");
 			Label title = new Label("Add Database");
 			title.getStyleClass().add("collection-action-title");
 			box.getChildren().addAll(MainController.loadFixedSizeGraphic("database-big.png", 64), title);
