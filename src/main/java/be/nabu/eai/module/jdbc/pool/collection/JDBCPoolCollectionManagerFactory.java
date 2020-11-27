@@ -13,6 +13,7 @@ import be.nabu.eai.developer.MainController;
 import be.nabu.eai.developer.api.CollectionAction;
 import be.nabu.eai.developer.api.CollectionManager;
 import be.nabu.eai.developer.api.CollectionManagerFactory;
+import be.nabu.eai.developer.collection.EAICollectionUtils;
 import be.nabu.eai.developer.managers.util.SimplePropertyUpdater;
 import be.nabu.eai.developer.util.EAIDeveloperUtils;
 import be.nabu.eai.module.data.model.DataModelArtifact;
@@ -92,14 +93,13 @@ public class JDBCPoolCollectionManagerFactory implements CollectionManagerFactor
 	@Override
 	public List<CollectionAction> getActionsFor(Entry entry) {
 		List<CollectionAction> actions = new ArrayList<CollectionAction>();
-		Collection collection = entry.getCollection();
-		if (collection != null && collection.getType().equals("project")) {
+		if (EAICollectionUtils.isProject(entry)) {
 			VBox box = new VBox();
 			box.getStyleClass().addAll("collection-action", "tile-xsmall");
 			Label title = new Label("Add Database");
 			title.getStyleClass().add("collection-action-title");
 			box.getChildren().addAll(MainController.loadFixedSizeGraphic("database-big.png", 64), title);
-			actions.add(new CollectionActionImpl(box, new EventHandler<ActionEvent>() {
+			actions.add(new CollectionActionImpl(EAICollectionUtils.newActionTile("database-big.png", "Add Database", "A database is used to persist data."), new EventHandler<ActionEvent>() {
 				@Override
 				public void handle(ActionEvent arg0) {
 					VBox root = new VBox();
@@ -278,11 +278,14 @@ public class JDBCPoolCollectionManagerFactory implements CollectionManagerFactor
 	}
 
 	private Entry getDatabasesEntry(RepositoryEntry project) throws IOException {
-		Entry child = EAIDeveloperUtils.mkdir(project, "database");
+		Entry child = EAIDeveloperUtils.mkdir(project, "databases");
 		if (!child.isCollection()) {
 			CollectionImpl collection = new CollectionImpl();
 			collection.setType("folder");
-			collection.setName("Database");
+			collection.setName("Databases");
+			collection.setSmallIcon("database-small.png");
+			collection.setMediumIcon("database-medium.png");
+			collection.setLargeIcon("database-big.png");
 			((RepositoryEntry) child).setCollection(collection);
 			((RepositoryEntry) child).saveCollection();
 		}

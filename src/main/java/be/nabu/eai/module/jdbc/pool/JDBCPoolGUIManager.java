@@ -9,9 +9,11 @@ import java.util.List;
 import java.util.concurrent.Future;
 
 import be.nabu.eai.developer.MainController;
+import be.nabu.eai.developer.managers.base.BaseArtifactGUIInstance;
 import be.nabu.eai.developer.managers.base.BaseJAXBComplexGUIManager;
 import be.nabu.eai.developer.util.RunService;
 import be.nabu.eai.module.types.structure.GenerateXSDMenuEntry;
+import be.nabu.eai.repository.api.Entry;
 import be.nabu.eai.repository.resources.RepositoryEntry;
 import be.nabu.eai.repository.util.SystemPrincipal;
 import be.nabu.jfx.control.ace.AceEditor;
@@ -25,6 +27,7 @@ import be.nabu.libs.types.binding.api.Window;
 import be.nabu.libs.types.binding.xml.XMLBinding;
 import be.nabu.libs.types.properties.MaxOccursProperty;
 import be.nabu.libs.types.structure.Structure;
+import be.nabu.libs.validator.api.Validation;
 import javafx.application.Platform;
 import javafx.event.ActionEvent;
 import javafx.event.Event;
@@ -214,4 +217,14 @@ public class JDBCPoolGUIManager extends BaseJAXBComplexGUIManager<JDBCPoolConfig
 		}
 	}
 	
+	@Override
+	protected BaseArtifactGUIInstance<JDBCPoolArtifact> newGUIInstance(Entry entry) {
+		return new BaseArtifactGUIInstance<JDBCPoolArtifact>(this, entry) {
+			@Override
+			public List<Validation<?>> save() throws IOException {
+				// TODO: start an asynchronous task to synchronize jdbc
+				return super.save();
+			}
+		};
+	}
 }
