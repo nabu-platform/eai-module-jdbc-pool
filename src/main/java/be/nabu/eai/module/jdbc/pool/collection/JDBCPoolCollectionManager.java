@@ -2,6 +2,7 @@ package be.nabu.eai.module.jdbc.pool.collection;
 
 import java.io.IOException;
 import java.util.Arrays;
+import java.util.List;
 
 import be.nabu.eai.developer.MainController;
 import be.nabu.eai.developer.api.CollectionManager;
@@ -12,13 +13,14 @@ import be.nabu.eai.developer.util.Confirm;
 import be.nabu.eai.developer.util.EAIDeveloperUtils;
 import be.nabu.eai.developer.util.Confirm.ConfirmType;
 import be.nabu.eai.module.data.model.DataModelArtifact;
+import be.nabu.eai.module.jdbc.context.GenerateDatabaseScriptContextMenu;
 import be.nabu.eai.module.jdbc.pool.JDBCPoolArtifact;
 import be.nabu.eai.module.jdbc.pool.JDBCPoolManager;
 import be.nabu.eai.module.jdbc.pool.api.JDBCPoolWizard;
 import be.nabu.eai.repository.api.Entry;
-import be.nabu.eai.repository.api.ExtensibleEntry;
 import be.nabu.eai.repository.api.ResourceEntry;
 import be.nabu.eai.repository.resources.RepositoryEntry;
+import be.nabu.libs.types.api.DefinedType;
 import javafx.event.ActionEvent;
 import javafx.event.EventHandler;
 import javafx.geometry.Insets;
@@ -39,6 +41,25 @@ public class JDBCPoolCollectionManager implements CollectionManager {
 
 	public JDBCPoolCollectionManager(Entry entry) {
 		this.entry = entry;
+		// it triggers waaaaay too often to be useful
+//		JDBCPoolArtifact pool = getPool();
+//		if (pool != null) {
+//			// we wait 5seconds before synchronizing
+//			// this is twofold: you might do multiple changes, we want to bundle the reload
+//			// if we reload too fast, the "unloading" of a delete for example is still ongoing, this goes into massive error mode when using the optimized localhost connection of developer (as file system changes need to pass through the unload...)
+//			MainController.getInstance().submitTask("jdbc-sync-" + pool.getId(), "Synchronize JDBC Tables", new Runnable() {
+//				@Override
+//				public void run() {
+//					try {
+//						System.out.println("---------> synchronizing jdbc pool " + pool.getId());
+//						GenerateDatabaseScriptContextMenu.synchronizeManagedTypes(pool);
+//					}
+//					catch (Exception e) {
+//						MainController.getInstance().notify(e);
+//					}
+//				}
+//			}, 5000);
+//		}
 	}
 
 	@Override
@@ -67,19 +88,38 @@ public class JDBCPoolCollectionManager implements CollectionManager {
 		box.getChildren().add(buttons);
 		
 		Button openConnection = new Button();
-		openConnection.setGraphic(MainController.loadFixedSizeGraphic("icons/search.png", 16));
+		openConnection.setGraphic(MainController.loadFixedSizeGraphic("icons/search.png", 12));
 		new CustomTooltip("Browse the database contents").install(openConnection);
 		buttons.getChildren().add(openConnection);
 		
 		Button openModel = new Button();
-		openModel.setGraphic(MainController.loadFixedSizeGraphic("datamodel.png", 16));
+		openModel.setGraphic(MainController.loadFixedSizeGraphic("datamodel.png", 12));
 		new CustomTooltip("View the data model").install(openModel);
 		buttons.getChildren().add(openModel);
 		
 		Button edit = new Button();
-		edit.setGraphic(MainController.loadFixedSizeGraphic("icons/edit.png", 16));
+		edit.setGraphic(MainController.loadFixedSizeGraphic("icons/edit.png", 12));
 		new CustomTooltip("Edit the database details").install(edit);
 		buttons.getChildren().add(edit);
+		
+		List<DefinedType> managedTypes = chosen.getManagedTypes();
+		if (managedTypes != null && !managedTypes.isEmpty()) {
+			Button synchronize = new Button();
+			synchronize.setGraphic(MainController.loadFixedSizeGraphic("icons/reload.png", 12));
+			new CustomTooltip("Synchronize managed types to the database").install(synchronize);
+			buttons.getChildren().add(synchronize);
+			synchronize.addEventHandler(ActionEvent.ANY, new EventHandler<ActionEvent>() {
+				@Override
+				public void handle(ActionEvent arg0) {
+					try {
+						GenerateDatabaseScriptContextMenu.synchronizeManagedTypes(chosen);
+					}
+					catch (Exception e) {
+						MainController.getInstance().notify(e);
+					}					
+				}
+			});
+		}
 		
 		Entry project = EAICollectionUtils.getProject(entry);
 		
@@ -171,7 +211,7 @@ public class JDBCPoolCollectionManager implements CollectionManager {
 		edit.setDisable(chosen == null || chosenWizard == null);
 		
 		Button remove = new Button();
-		remove.setGraphic(MainController.loadFixedSizeGraphic("icons/delete.png", 16));
+		remove.setGraphic(MainController.loadFixedSizeGraphic("icons/delete.png", 12));
 		new CustomTooltip("Remove the database").install(remove);
 		buttons.getChildren().add(remove);
 		remove.addEventHandler(ActionEvent.ANY, new EventHandler<ActionEvent>() {
@@ -180,13 +220,7 @@ public class JDBCPoolCollectionManager implements CollectionManager {
 				Confirm.confirm(ConfirmType.WARNING, "Delete " + entry.getName(), "Are you sure you want to delete this database connection? This action can not be undone.", new EventHandler<ActionEvent>() {
 					@Override
 					public void handle(ActionEvent arg0) {
-						try {
-							((ExtensibleEntry) entry.getParent()).deleteChild(entry.getName(), true);
-							EAIDeveloperUtils.deleted(entry.getId());
-						}
-						catch (IOException e) {
-							MainController.getInstance().notify(e);
-						}
+						EAIDeveloperUtils.delete(entry.getId());
 					}
 				});
 			}

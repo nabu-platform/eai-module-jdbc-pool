@@ -13,6 +13,7 @@ import be.nabu.eai.developer.MainController;
 import be.nabu.eai.developer.api.CollectionAction;
 import be.nabu.eai.developer.api.CollectionManager;
 import be.nabu.eai.developer.api.CollectionManagerFactory;
+import be.nabu.eai.developer.api.EntryAcceptor;
 import be.nabu.eai.developer.collection.EAICollectionUtils;
 import be.nabu.eai.developer.managers.util.SimplePropertyUpdater;
 import be.nabu.eai.developer.util.EAIDeveloperUtils;
@@ -31,10 +32,12 @@ import be.nabu.eai.repository.api.Entry;
 import be.nabu.eai.repository.api.ResourceEntry;
 import be.nabu.eai.repository.resources.RepositoryEntry;
 import be.nabu.libs.property.ValueUtils;
+import be.nabu.libs.services.api.DefinedService;
 import be.nabu.libs.types.api.ComplexType;
 import be.nabu.libs.types.api.DefinedType;
 import be.nabu.libs.types.api.DefinedTypeRegistry;
 import be.nabu.libs.types.properties.CollectionNameProperty;
+import be.nabu.libs.validator.api.ValidationMessage.Severity;
 import javafx.application.Platform;
 import javafx.event.ActionEvent;
 import javafx.event.EventHandler;
@@ -127,7 +130,7 @@ public class JDBCPoolCollectionManagerFactory implements CollectionManagerFactor
 					for (JDBCPoolWizard wizard : getPoolWizards()) {
 						VBox box = new VBox();
 						
-						box.getStyleClass().add("collection-action");
+						box.getStyleClass().addAll("collection-action", "tile-small");
 						box.setAlignment(Pos.CENTER);
 						box.setPadding(new Insets(20));
 						box.getChildren().add(MainController.loadFixedSizeGraphic(wizard.getIcon(), 64));
@@ -211,12 +214,13 @@ public class JDBCPoolCollectionManagerFactory implements CollectionManagerFactor
 													basicInformation.setName(basicInformation.getName() + " " + counter);
 												}
 												basicInformation.setCorrectName(name);
-												create(entry, basicInformation, wizard, properties);
+												String idToOpen = create(entry, basicInformation, wizard, properties);
 												
 												MainController.getInstance().getAsynchronousRemoteServer().reload(entry.getId());
 												
 												root.getChildren().clear();
 												
+												stage.hide();
 												VBox message = new VBox();
 												message.setAlignment(Pos.CENTER);
 												message.getChildren().add(MainController.loadGraphic("dialog/dialog-success.png"));
@@ -224,12 +228,17 @@ public class JDBCPoolCollectionManagerFactory implements CollectionManagerFactor
 												label.getStyleClass().add("p");
 												message.getChildren().add(label);
 												root.getChildren().add(message);
+												MainController.getInstance().getNotificationHandler().notify("Database successfully set up: " + idToOpen, 5000l, Severity.INFO);
 												// it hangs just enough to be noticeable...
 												Platform.runLater(new Runnable() {
 													@Override
 													public void run() {
 														MainController.getInstance().getRepositoryBrowser().refresh();
-														stage.sizeToScene();
+//														stage.sizeToScene();
+//														stage.centerOnScreen();
+														if (idToOpen != null) {
+															MainController.getInstance().open(idToOpen);
+														}
 													}
 												});
 											}
@@ -240,6 +249,7 @@ public class JDBCPoolCollectionManagerFactory implements CollectionManagerFactor
 										}
 									});
 									stage.sizeToScene();
+									stage.centerOnScreen();
 								}
 								catch (Exception e) {
 									MainController.getInstance().notify(e);
@@ -259,6 +269,12 @@ public class JDBCPoolCollectionManagerFactory implements CollectionManagerFactor
 					buttons.getChildren().add(close);
 					root.getChildren().add(buttons);
 					stage.show();
+				}
+			}, new EntryAcceptor() {
+				@Override
+				public boolean accept(Entry entry) {
+					Collection collection = entry.getCollection();
+					return collection != null && "folder".equals(collection.getType()) && "databases".equals(collection.getSubType());
 				}
 			}));
 		}
@@ -286,6 +302,7 @@ public class JDBCPoolCollectionManagerFactory implements CollectionManagerFactor
 			collection.setSmallIcon("database-small.png");
 			collection.setMediumIcon("database-medium.png");
 			collection.setLargeIcon("database-big.png");
+			collection.setSubType("databases");
 			((RepositoryEntry) child).setCollection(collection);
 			((RepositoryEntry) child).saveCollection();
 		}
@@ -294,10 +311,14 @@ public class JDBCPoolCollectionManagerFactory implements CollectionManagerFactor
 	
 	public static void setMainContext(JDBCPoolArtifact jdbc, Entry project) {
 		// TODO: scrape that no one already has the nabu context!
+		// too many manual things required otherwise...?
 		jdbc.getConfig().setContext(project.getId() + ", nabu");
+		// too annoying to set the nabu context when dealing with multiple databases...?
+		// it will take over all calls in the nabu package like translations, rate limiting...
+//		jdbc.getConfig().setContext(project.getId());
 	}
 	
-	private <T> void create(Entry project, BasicInformation information, JDBCPoolWizard<T> wizard, T properties) {
+	private <T> String create(Entry project, BasicInformation information, JDBCPoolWizard<T> wizard, T properties) {
 		try {
 			RepositoryEntry jdbcEntry = createDatabaseEntry((RepositoryEntry) project, information.getCorrectName(), information.getName());
 			
@@ -367,6 +388,10 @@ public class JDBCPoolCollectionManagerFactory implements CollectionManagerFactor
 						jdbc.getConfig().getManagedModels().remove(definedModelNames.get(id.replaceAll("\\bemodel\\b", "model")));
 					}
 				}
+				
+				// let's automatically add the translation providers for CMS, by default we assume you will use CMS
+				jdbc.getConfig().setTranslationGet((DefinedService) project.getRepository().resolve("nabu.cms.core.providers.translation.jdbc.get"));
+				jdbc.getConfig().setTranslationSet((DefinedService) project.getRepository().resolve("nabu.cms.core.providers.translation.jdbc.set"));
 			}
 			
 			new JDBCPoolManager().save((ResourceEntry) project.getRepository().getEntry(jdbc.getId()), jdbc);
@@ -379,6 +404,7 @@ public class JDBCPoolCollectionManagerFactory implements CollectionManagerFactor
 			else {
 				MainController.getInstance().getAsynchronousRemoteServer().reload(jdbc.getId());
 			}
+			return dataModelEntry.getId();
 		}
 		catch (Exception e) {
 			throw new RuntimeException(e);

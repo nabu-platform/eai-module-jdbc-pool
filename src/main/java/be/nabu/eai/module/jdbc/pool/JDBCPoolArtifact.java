@@ -212,6 +212,45 @@ public class JDBCPoolArtifact extends JAXBArtifact<JDBCPoolConfiguration> implem
 										break;
 									}
 								}
+								// if we have a key match, first we check if the metadata still checks out
+								if (keyMatch != null) {
+									Element<?> element = children.get(keyMatch);
+									Value<Integer> minOccurs = element.getProperty(MinOccursProperty.getInstance());
+									boolean isOptional = minOccurs != null && minOccurs.getValue() != null && minOccurs.getValue() == 0;
+									// if the database is defined as optional and the element is not, we actually don't change it
+									// chances are that there is already data in there that does not conform to this requirement
+									// we will notify you however
+									if (column.isOptional() && !isOptional) { 
+										logger.warn("[" + getId() + "] Found optional column " + column.getName() + " for table " + tableName + " that is required in data type: " + ((DefinedType) type).getId() + ":" + element.getName());
+									}
+									// you made it optional in your data type, let's do this!
+									else if (!column.isOptional() && isOptional) {
+										String nillable = dialect.buildAlterNillable(type, element.getName(), isOptional);
+										for (String sql : nillable.split(";")) {
+											if (sql.trim().isEmpty()) {
+												continue;
+											}
+											TableChange change = new TableChange();
+											change.setTable(description.getName());
+											change.setColumn(column.getName());
+											change.setScript(sql);
+											change.setReason("Column is no longer required, dropping the not null requirement");
+											changes.add(change);
+											if (execute) {
+												Statement statement = connection.createStatement();
+												try {
+													logger.info("[" + getId() + "] Making column optional: " + column.getName());
+													logger.info(sql);
+													statement.execute(sql);
+												}
+												finally {
+													statement.close();
+												}
+											}
+										}
+									}
+									// TODO: check type as well!
+								}
 								if (keyMatch != null && children.remove(keyMatch) != null) {
 									iterator.remove();
 								}
@@ -250,6 +289,10 @@ public class JDBCPoolArtifact extends JAXBArtifact<JDBCPoolConfiguration> implem
 									}
 								}
 							}
+							// if we drop the unused columns before we add new ones, some (all?) databases don't allow dropping the last column
+							// so if you changed the type substantially, you have to create first, then drop
+							// a new problem has cropped up though: you can't add two primary key fields in a lot of cases
+							// so if we actually renamed the primary key field, we need to drop it first...
 							for (Element<?> newChild : children.values()) {
 								String alter = dialect.buildAlterSQL(type, newChild.getName());
 								for (String sql : alter.split(";")) {
