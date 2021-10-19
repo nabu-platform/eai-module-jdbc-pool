@@ -1,6 +1,7 @@
 package be.nabu.eai.module.jdbc.pool;
 
 import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.Charset;
 import java.text.ParseException;
@@ -25,6 +26,7 @@ import be.nabu.libs.types.api.Element;
 import be.nabu.libs.types.base.ValueImpl;
 import be.nabu.libs.types.binding.api.Window;
 import be.nabu.libs.types.binding.xml.XMLBinding;
+import be.nabu.libs.types.java.BeanType;
 import be.nabu.libs.types.properties.MaxOccursProperty;
 import be.nabu.libs.types.structure.Structure;
 import be.nabu.libs.validator.api.Validation;
@@ -157,13 +159,22 @@ public class JDBCPoolGUIManager extends BaseJAXBComplexGUIManager<JDBCPoolConfig
 					try {
 						ComplexContent input = artifact.getServiceInterface().getInputDefinition().newInstance();
 						input.set("sql", query);
-						input.set("limit", RunService.AUTO_LIMIT);
-						input.set("offset", page * RunService.AUTO_LIMIT);
+						if (query.trim().startsWith("select")) {
+							input.set("limit", RunService.AUTO_LIMIT);
+							input.set("offset", page * RunService.AUTO_LIMIT);
+						}
 						Future<ServiceResult> run = artifact.getRepository().getServiceRunner().run(artifact, artifact.getRepository().newExecutionContext(SystemPrincipal.ROOT), input);
 						ServiceResult serviceResult = run.get();
 						ComplexContent output = serviceResult.getOutput();
 						// we probably weren't able to parse it, get the stringified version (check RemoteServer to see how this is done)
 						Object object = output == null ? null : output.get("content");
+						// when running locally, you get a parsed result from the server which is a list of objects, we stringify it so it follows the same paradigm
+						if (object == null && output != null && output.get("results") != null) {
+							XMLBinding xmlBinding = new XMLBinding(output.getType(), Charset.defaultCharset());
+							ByteArrayOutputStream stream = new ByteArrayOutputStream();
+							xmlBinding.marshal(stream, output);
+							object = new String(stream.toByteArray());
+						}
 						if (object != null) {
 							Structure content = GenerateXSDMenuEntry.generateFromXML(object.toString(), Charset.forName("UTF-8"));
 							Element<?> element = content.get("results");
@@ -202,6 +213,7 @@ public class JDBCPoolGUIManager extends BaseJAXBComplexGUIManager<JDBCPoolConfig
 						}
 					}
 					catch (Exception e) {
+						e.printStackTrace();
 						MainController.getInstance().notify(e);
 					}
 					finally {
