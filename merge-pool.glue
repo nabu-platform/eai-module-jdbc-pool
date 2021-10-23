@@ -1,0 +1,98 @@
+result = xml.objectify(file.read("jdbcPool.xml"))
+
+tag("JDBC Pool")
+
+result/jdbcUrl = parameter(
+	name: "jdbcUrl",
+	category: "Database",
+	title: null,
+	description: "The JDBC url",
+	type: null,
+	encrypted: false,
+	optional: false,
+	raw: result/jdbcUrl)/current
+	
+result/driverClassName = parameter(
+	name: "driverClassName",
+	category: "Database",
+	title: null,
+	description: "The driver used to connect to the database",
+	type: null,
+	encrypted: false,
+	optional: false,
+	raw: result/driverClassName)/current
+	
+result/dialect = parameter(
+	name: "dialect",
+	category: "Database",
+	title: null,
+	description: "The dialect used to standardize SQL queries",
+	type: null,
+	encrypted: false,
+	optional: true,
+	raw: result/dialect)/current
+	
+result/username = parameter(
+	name: "username",
+	category: "Database",
+	title: null,
+	description: "The user used to connect to the database",
+	type: null,
+	encrypted: false,
+	optional: true,
+	raw: result/username)/current
+	
+result/password = parameter(
+	name: "password",
+	category: "Database",
+	title: null,
+	description: "The password used to connect to the database",
+	type: "password",
+	encrypted: true,
+	optional: true,
+	raw: result/password)/current
+	
+result/maximumPoolSize = parameter(
+	name: "maximumPoolSize",
+	category: "Limits",
+	title: null,
+	description: "The maximum amount of connections",
+	type: "long",
+	encrypted: false,
+	optional: true,
+	default: "10",
+	raw: result/maximumPoolSize)/current
+
+result/minimumIdle = parameter(
+	name: "minimumIdle",
+	category: "Limits",
+	title: null,
+	description: "The minimum amount of connections to keep idle",
+	type: "long",
+	encrypted: false,
+	optional: true,
+	raw: result/minimumIdle)/current
+
+result/connectionTimeout = parameter(
+	name: "connectionTimeout",
+	category: "Limits",
+	title: null,
+	description: "The connection timeout for database connections",
+	type: "long",
+	encrypted: false,
+	optional: true,
+	raw: result/connectionTimeout)/current
+
+result/idleTimeout = parameter(
+	name: "idleTimeout",
+	category: "Limits",
+	title: null,
+	description: "The idle timeout for database connections",
+	type: "long",
+	encrypted: false,
+	optional: true,
+	raw: result/idleTimeout)/current
+	
+
+	
+file.write("jdbcPool.xml", xml.stringify(result))
