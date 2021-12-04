@@ -312,10 +312,10 @@ public class JDBCPoolCollectionManagerFactory implements CollectionManagerFactor
 	public static void setMainContext(JDBCPoolArtifact jdbc, Entry project) {
 		// TODO: scrape that no one already has the nabu context!
 		// too many manual things required otherwise...?
-		jdbc.getConfig().setContext(project.getId() + ", nabu");
+//		jdbc.getConfig().setContext(project.getId() + ", nabu");
 		// too annoying to set the nabu context when dealing with multiple databases...?
 		// it will take over all calls in the nabu package like translations, rate limiting...
-//		jdbc.getConfig().setContext(project.getId());
+		jdbc.getConfig().setContext(project.getId());
 	}
 	
 	private <T> String create(Entry project, BasicInformation information, JDBCPoolWizard<T> wizard, T properties) {
