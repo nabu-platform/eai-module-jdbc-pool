@@ -2,7 +2,7 @@ package nabu.protocols.jdbc.pool.types;
 
 public class JDBCPoolInformation {
 	private String defaultLanguage;
-	private boolean translatable;
+	private boolean translatable, started;
 	private String jdbcUrl, username, driverClass, dialect;
 	public String getDefaultLanguage() {
 		return defaultLanguage;
@@ -39,5 +39,11 @@ public class JDBCPoolInformation {
 	}
 	public void setDialect(String dialect) {
 		this.dialect = dialect;
+	}
+	public boolean isStarted() {
+		return started;
+	}
+	public void setStarted(boolean started) {
+		this.started = started;
 	}
 }

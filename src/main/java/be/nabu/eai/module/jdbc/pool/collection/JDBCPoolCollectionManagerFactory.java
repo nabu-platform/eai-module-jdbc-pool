@@ -289,8 +289,10 @@ public class JDBCPoolCollectionManagerFactory implements CollectionManagerFactor
 		collection.setName(prettyName);
 		((RepositoryEntry) target).setCollection(collection);
 		((RepositoryEntry) target).saveCollection();
-		EAIDeveloperUtils.reload(child.getId());
-		return ((RepositoryEntry) target).createNode("connection", new JDBCPoolManager(), true);
+		EAIDeveloperUtils.updated(target.getId());
+		RepositoryEntry createNode = ((RepositoryEntry) target).createNode("connection", new JDBCPoolManager(), true);
+		EAIDeveloperUtils.created(createNode.getId());
+		return createNode;
 	}
 
 	private Entry getDatabasesEntry(RepositoryEntry project) throws IOException {
@@ -336,7 +338,7 @@ public class JDBCPoolCollectionManagerFactory implements CollectionManagerFactor
 			DataModelArtifact model = new DataModelArtifact(dataModelEntry.getId(), dataModelEntry.getContainer(), dataModelEntry.getRepository());
 			model.getConfig().setType(DataModelType.DATABASE);
 			new DataModelManager().save(dataModelEntry, model);
-			EAIDeveloperUtils.updated(jdbcEntry.getId());
+			EAIDeveloperUtils.created(dataModelEntry.getId());
 			
 			// if it is a main database, we prefill it with all the necessary things
 			if (information.isMainDatabase()) {
@@ -397,6 +399,12 @@ public class JDBCPoolCollectionManagerFactory implements CollectionManagerFactor
 			new JDBCPoolManager().save((ResourceEntry) project.getRepository().getEntry(jdbc.getId()), jdbc);
 			jdbcEntry.getNode().setName("Connection");
 			jdbcEntry.saveNode();
+			EAIDeveloperUtils.updated(jdbc.getId());
+			
+			// hard refresh, in local mode it is not working correctly so far, the symptoms are: when you first open it, it is empty until you reload it
+			// and it will not appear in the project overview which uses reloading to pick this stuff up
+//			((RepositoryEntry) project.getRepository().getEntry(jdbc.getId())).refresh(true, false);
+			// it's been internalized in updated()
 			
 			if (information.isMainDatabase()) {
 				synchronize(jdbc);

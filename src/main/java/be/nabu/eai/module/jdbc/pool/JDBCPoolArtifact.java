@@ -102,16 +102,22 @@ public class JDBCPoolArtifact extends JAXBArtifact<JDBCPoolConfiguration> implem
 			dataSource = null;
 		}
 		try {
-			Properties properties = getAsProperties();
-			if (!properties.isEmpty()) {
-				HikariConfig hikariConfig = new HikariConfig(properties);
-				if (getConfiguration().getEnableMetrics() != null && getConfiguration().getEnableMetrics()) {
-					metrics = getRepository().getMetricInstance(getId());
-					if (metrics != null) {
-						hikariConfig.setMetricsTrackerFactory(new MetricsTrackerFactoryImpl(metrics));
+			// we can not proceed if we don't have a JDBC url
+			if (getConfig().getJdbcUrl() != null) {
+				Properties properties = getAsProperties();
+				if (!properties.isEmpty()) {
+					HikariConfig hikariConfig = new HikariConfig(properties);
+					if (getConfiguration().getEnableMetrics() != null && getConfiguration().getEnableMetrics()) {
+						metrics = getRepository().getMetricInstance(getId());
+						if (metrics != null) {
+							hikariConfig.setMetricsTrackerFactory(new MetricsTrackerFactoryImpl(metrics));
+						}
 					}
+					dataSource = new HikariDataSource(hikariConfig);
 				}
-				dataSource = new HikariDataSource(hikariConfig);
+			}
+			else {
+				logger.warn("Can not start database connection " + getId() + ", no jdbcUrl has been configured");
 			}
 		}
 		catch (Exception e) {
@@ -182,195 +188,201 @@ public class JDBCPoolArtifact extends JAXBArtifact<JDBCPoolConfiguration> implem
 		List<TableChange> changes = new ArrayList<TableChange>();
 		if (managedTypes != null && !managedTypes.isEmpty()) {
 			List<ComplexType> typesToSync = getTableTypes(managedTypes);
-			Connection connection = getDataSource().getConnection();
-			try {
-				SQLDialect dialect = getDialect();
-				if (dialect == null) {
-					dialect = new DefaultDialect();
-				}
-				JDBCPoolUtils.deepSort(typesToSync, new JDBCPoolUtils.ForeignKeyComparator(false));
-				for (ComplexType type : typesToSync) {
-					try {
-						String tableName = getName(type.getProperties());
-						List<TableDescription> describeTables = JDBCPoolUtils.describeTables(null, null, dialect.standardizeTablePattern(tableName), getDataSource(), true);
-						// the table exists
-						if (describeTables.size() == 1) {
-							Map<String, Element<?>> children = new LinkedHashMap<String, Element<?>>();
-							for (Element<?> child : JDBCUtils.getFieldsInTable(type)) {
-								children.put(EAIRepositoryUtils.uncamelify(child.getName()), child);
-							}
-							// we remove all the children that already have a column
-							TableDescription description = describeTables.get(0);
-							List<TableColumnDescription> columns = new ArrayList<TableColumnDescription>(description.getColumnDescriptions());
-							Iterator<TableColumnDescription> iterator = columns.iterator();
-							while (iterator.hasNext()) {
-								TableColumnDescription column = iterator.next();
-								String keyMatch = null;
-								for (String key : children.keySet()) {
-									if (key.equalsIgnoreCase(column.getName())) {
-										keyMatch = key;
-										break;
-									}
+			DataSource dataSource = getDataSource();
+			if (dataSource != null) {
+				Connection connection = dataSource.getConnection();
+				try {
+					SQLDialect dialect = getDialect();
+					if (dialect == null) {
+						dialect = new DefaultDialect();
+					}
+					JDBCPoolUtils.deepSort(typesToSync, new JDBCPoolUtils.ForeignKeyComparator(false));
+					for (ComplexType type : typesToSync) {
+						try {
+							String tableName = getName(type.getProperties());
+							List<TableDescription> describeTables = JDBCPoolUtils.describeTables(null, null, dialect.standardizeTablePattern(tableName), getDataSource(), true);
+							// the table exists
+							if (describeTables.size() == 1) {
+								Map<String, Element<?>> children = new LinkedHashMap<String, Element<?>>();
+								for (Element<?> child : JDBCUtils.getFieldsInTable(type)) {
+									children.put(EAIRepositoryUtils.uncamelify(child.getName()), child);
 								}
-								// if we have a key match, first we check if the metadata still checks out
-								if (keyMatch != null) {
-									Element<?> element = children.get(keyMatch);
-									Value<Integer> minOccurs = element.getProperty(MinOccursProperty.getInstance());
-									boolean isOptional = minOccurs != null && minOccurs.getValue() != null && minOccurs.getValue() == 0;
-									// if the database is defined as optional and the element is not, we actually don't change it
-									// chances are that there is already data in there that does not conform to this requirement
-									// we will notify you however
-									if (column.isOptional() && !isOptional) { 
-										logger.warn("[" + getId() + "] Found optional column " + column.getName() + " for table " + tableName + " that is required in data type: " + ((DefinedType) type).getId() + ":" + element.getName());
-									}
-									// you made it optional in your data type, let's do this!
-									else if (!column.isOptional() && isOptional) {
-										String nillable = dialect.buildAlterNillable(type, element.getName(), isOptional);
-										for (String sql : nillable.split(";")) {
-											if (sql.trim().isEmpty()) {
-												continue;
-											}
-											TableChange change = new TableChange();
-											change.setTable(description.getName());
-											change.setColumn(column.getName());
-											change.setScript(sql);
-											change.setReason("Column is no longer required, dropping the not null requirement");
-											changes.add(change);
-											if (execute) {
-												Statement statement = connection.createStatement();
-												try {
-													logger.info("[" + getId() + "] Making column optional: " + column.getName());
-													logger.info(sql);
-													statement.execute(sql);
-												}
-												finally {
-													statement.close();
-												}
-											}
+								// we remove all the children that already have a column
+								TableDescription description = describeTables.get(0);
+								List<TableColumnDescription> columns = new ArrayList<TableColumnDescription>(description.getColumnDescriptions());
+								Iterator<TableColumnDescription> iterator = columns.iterator();
+								while (iterator.hasNext()) {
+									TableColumnDescription column = iterator.next();
+									String keyMatch = null;
+									for (String key : children.keySet()) {
+										if (key.equalsIgnoreCase(column.getName())) {
+											keyMatch = key;
+											break;
 										}
 									}
-									// TODO: check type as well!
-								}
-								if (keyMatch != null && children.remove(keyMatch) != null) {
-									iterator.remove();
-								}
-							}
-							// any remaining columns are no longer in the data type, if they are optional it doesn't matter, otherwise some action will need to be taken
-							// currently we won't automatically drop a column...yet...
-							for (TableColumnDescription column : columns) {
-								if (!column.isOptional() || force) {
-									if (force) {
-										String drop = dialect.buildDropSQL(type, column.getName());
-										for (String sql : drop.split(";")) {
-											if (sql.trim().isEmpty()) {
-												continue;
-											}
-											TableChange change = new TableChange();
-											change.setTable(description.getName());
-											change.setColumn(column.getName());
-											change.setScript(sql);
-											change.setReason("Column no longer exists in the definition and we forced the drop");
-											changes.add(change);
-											if (execute) {
-												Statement statement = connection.createStatement();
-												try {
-													logger.info("[" + getId() + "] Dropping existing column: " + column.getName());
-													logger.info(sql);
-													statement.execute(sql);
+									// if we have a key match, first we check if the metadata still checks out
+									if (keyMatch != null) {
+										Element<?> element = children.get(keyMatch);
+										Value<Integer> minOccurs = element.getProperty(MinOccursProperty.getInstance());
+										boolean isOptional = minOccurs != null && minOccurs.getValue() != null && minOccurs.getValue() == 0;
+										// if the database is defined as optional and the element is not, we actually don't change it
+										// chances are that there is already data in there that does not conform to this requirement
+										// we will notify you however
+										if (column.isOptional() && !isOptional) { 
+											logger.warn("[" + getId() + "] Found optional column " + column.getName() + " for table " + tableName + " that is required in data type: " + ((DefinedType) type).getId() + ":" + element.getName());
+										}
+										// you made it optional in your data type, let's do this!
+										else if (!column.isOptional() && isOptional) {
+											String nillable = dialect.buildAlterNillable(type, element.getName(), isOptional);
+											for (String sql : nillable.split(";")) {
+												if (sql.trim().isEmpty()) {
+													continue;
 												}
-												finally {
-													statement.close();
+												TableChange change = new TableChange();
+												change.setTable(description.getName());
+												change.setColumn(column.getName());
+												change.setScript(sql);
+												change.setReason("Column is no longer required, dropping the not null requirement");
+												changes.add(change);
+												if (execute) {
+													Statement statement = connection.createStatement();
+													try {
+														logger.info("[" + getId() + "] Making column optional: " + column.getName());
+														logger.info(sql);
+														statement.execute(sql);
+													}
+													finally {
+														statement.close();
+													}
 												}
 											}
 										}
+										// TODO: check type as well!
 									}
-									else {
-										logger.warn("[" + getId() + "] Found required column " + column.getName() + " for table " + tableName + " that is not present in data type: " + ((DefinedType) type).getId());
+									if (keyMatch != null && children.remove(keyMatch) != null) {
+										iterator.remove();
 									}
 								}
-							}
-							// if we drop the unused columns before we add new ones, some (all?) databases don't allow dropping the last column
-							// so if you changed the type substantially, you have to create first, then drop
-							// a new problem has cropped up though: you can't add two primary key fields in a lot of cases
-							// so if we actually renamed the primary key field, we need to drop it first...
-							for (Element<?> newChild : children.values()) {
-								String alter = dialect.buildAlterSQL(type, newChild.getName());
-								for (String sql : alter.split(";")) {
-									if (sql.trim().isEmpty()) {
-										continue;
-									}
-									TableChange change = new TableChange();
-									change.setTable(description.getName());
-									change.setColumn(newChild.getName());
-									change.setScript(sql);
-									change.setReason("New column was found in the definition");
-									changes.add(change);
-									if (execute) {
-										Statement statement = connection.createStatement();
-										try {
-											logger.info("[" + getId() + "] Adding new column: " + newChild.getName());
-											logger.info(sql);
-											statement.execute(sql);
+								// any remaining columns are no longer in the data type, if they are optional it doesn't matter, otherwise some action will need to be taken
+								// currently we won't automatically drop a column...yet...
+								for (TableColumnDescription column : columns) {
+									if (!column.isOptional() || force) {
+										if (force) {
+											String drop = dialect.buildDropSQL(type, column.getName());
+											for (String sql : drop.split(";")) {
+												if (sql.trim().isEmpty()) {
+													continue;
+												}
+												TableChange change = new TableChange();
+												change.setTable(description.getName());
+												change.setColumn(column.getName());
+												change.setScript(sql);
+												change.setReason("Column no longer exists in the definition and we forced the drop");
+												changes.add(change);
+												if (execute) {
+													Statement statement = connection.createStatement();
+													try {
+														logger.info("[" + getId() + "] Dropping existing column: " + column.getName());
+														logger.info(sql);
+														statement.execute(sql);
+													}
+													finally {
+														statement.close();
+													}
+												}
+											}
 										}
-										finally {
-											statement.close();
+										else {
+											logger.warn("[" + getId() + "] Found required column " + column.getName() + " for table " + tableName + " that is not present in data type: " + ((DefinedType) type).getId());
+										}
+									}
+								}
+								// if we drop the unused columns before we add new ones, some (all?) databases don't allow dropping the last column
+								// so if you changed the type substantially, you have to create first, then drop
+								// a new problem has cropped up though: you can't add two primary key fields in a lot of cases
+								// so if we actually renamed the primary key field, we need to drop it first...
+								for (Element<?> newChild : children.values()) {
+									String alter = dialect.buildAlterSQL(type, newChild.getName());
+									for (String sql : alter.split(";")) {
+										if (sql.trim().isEmpty()) {
+											continue;
+										}
+										TableChange change = new TableChange();
+										change.setTable(description.getName());
+										change.setColumn(newChild.getName());
+										change.setScript(sql);
+										change.setReason("New column was found in the definition");
+										changes.add(change);
+										if (execute) {
+											Statement statement = connection.createStatement();
+											try {
+												logger.info("[" + getId() + "] Adding new column: " + newChild.getName());
+												logger.info(sql);
+												statement.execute(sql);
+											}
+											finally {
+												statement.close();
+											}
 										}
 									}
 								}
 							}
-						}
-						// the table does not exist
-						else if (describeTables.size() == 0) {
-							String create = dialect.buildCreateSQL(type);
-							// the default dialect does not generate create scripts
-							if (create == null) {
-								TableChange change = new TableChange();
-								change.setTable(tableName);
-								change.setReason("The table does not yet exist, without a proper dialect a create script can not be provided");
-								changes.add(change);
-								if (execute) {
-									throw new RuntimeException("No dialect configured, can not generate correct scripts");
-								}
-							}
-							else {
-								for (String sql : create.split(";")) {
-									if (sql.trim().isEmpty()) {
-										continue;
-									}
+							// the table does not exist
+							else if (describeTables.size() == 0) {
+								String create = dialect.buildCreateSQL(type);
+								// the default dialect does not generate create scripts
+								if (create == null) {
 									TableChange change = new TableChange();
 									change.setTable(tableName);
-									change.setScript(sql);
-									change.setReason("The table did not yet exist");
+									change.setReason("The table does not yet exist, without a proper dialect a create script can not be provided");
 									changes.add(change);
 									if (execute) {
-										Statement statement = connection.createStatement();
-										try {
-											logger.info("[" + getId() + "] Adding new table: " + tableName);
-											logger.info(sql);
-											statement.execute(sql);
+										throw new RuntimeException("No dialect configured, can not generate correct scripts");
+									}
+								}
+								else {
+									for (String sql : create.split(";")) {
+										if (sql.trim().isEmpty()) {
+											continue;
 										}
-										finally {
-											statement.close();
+										TableChange change = new TableChange();
+										change.setTable(tableName);
+										change.setScript(sql);
+										change.setReason("The table did not yet exist");
+										changes.add(change);
+										if (execute) {
+											Statement statement = connection.createStatement();
+											try {
+												logger.info("[" + getId() + "] Adding new table: " + tableName);
+												logger.info(sql);
+												statement.execute(sql);
+											}
+											finally {
+												statement.close();
+											}
 										}
 									}
 								}
 							}
+							// there are multiple tables, we could not correctly limit it to the schema
+							else {
+								throw new IllegalStateException("Could not correctly limit the check to the current schema");
+							}
+							logger.debug("[" + getId() + "] Synchronized table: " + tableName);
+							connection.commit();
 						}
-						// there are multiple tables, we could not correctly limit it to the schema
-						else {
-							throw new IllegalStateException("Could not correctly limit the check to the current schema");
+						catch (Exception e) {
+							logger.error("Could not synchronize type " + ((DefinedType) type).getId() + " to pool " + getId(), e);
+							connection.rollback();
 						}
-						logger.debug("[" + getId() + "] Synchronized table: " + tableName);
-						connection.commit();
-					}
-					catch (Exception e) {
-						logger.error("Could not synchronize type " + ((DefinedType) type).getId() + " to pool " + getId(), e);
-						connection.rollback();
 					}
 				}
+				finally {
+					connection.close();
+				}
 			}
-			finally {
-				connection.close();
+			else {
+				throw new IllegalStateException("A valid datasource can not be obtained for " + getId() + ", make sure the connection is valid");
 			}
 		}
 		return changes;
@@ -613,6 +625,12 @@ public class JDBCPoolArtifact extends JAXBArtifact<JDBCPoolConfiguration> implem
 		}
 		dependency.setType("database");
 		return Arrays.asList(dependency);
+	}
+
+	// we want this accessible early so database operations can be done
+	@Override
+	public StartPhase getPhase() {
+		return StartPhase.EARLY;
 	}
 	
 }

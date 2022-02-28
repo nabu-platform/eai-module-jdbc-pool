@@ -115,6 +115,7 @@ public class Services {
 			JDBCPoolArtifact resolve = (JDBCPoolArtifact) EAIResourceRepository.getInstance().resolve(jdbcPoolId);
 			if (resolve != null) {
 				JDBCPoolInformation information = new JDBCPoolInformation();
+				information.setStarted(resolve.isStarted());
 				information.setDefaultLanguage(resolve.getConfig().getDefaultLanguage());
 				information.setTranslatable(resolve.getConfig().getTranslationGet() != null && resolve.getConfig().getTranslationSet() != null);
 				if (resolve.getConfig().getDialect() != null) {
