@@ -26,7 +26,6 @@ import be.nabu.libs.types.api.Element;
 import be.nabu.libs.types.base.ValueImpl;
 import be.nabu.libs.types.binding.api.Window;
 import be.nabu.libs.types.binding.xml.XMLBinding;
-import be.nabu.libs.types.java.BeanType;
 import be.nabu.libs.types.properties.MaxOccursProperty;
 import be.nabu.libs.types.structure.Structure;
 import be.nabu.libs.validator.api.Validation;
@@ -234,6 +233,24 @@ public class JDBCPoolGUIManager extends BaseJAXBComplexGUIManager<JDBCPoolConfig
 		return new BaseArtifactGUIInstance<JDBCPoolArtifact>(this, entry) {
 			@Override
 			public List<Validation<?>> save() throws IOException {
+				// if you have configured a pool proxy, we copy the settings
+				// visually you can't edit the settings anyway and there is a high likelihood that you will use the same database (so same dialect, driver etc) in all environments
+				// this means you probably only need to differentiate those particular settings
+				// the alternative is that we show all fields though they don't do anything if you have a proxy, simply to optimize the deployment process (preventing the need to fill in the details then)
+				if (getArtifact().getConfig().getPoolProxy() != null) {
+					getArtifact().getConfig().setAutoCommit(getArtifact().getConfig().getPoolProxy().getConfig().getAutoCommit());
+					getArtifact().getConfig().setConnectionTimeout(getArtifact().getConfig().getPoolProxy().getConfig().getConnectionTimeout());
+					getArtifact().getConfig().setDialect(getArtifact().getConfig().getPoolProxy().getConfig().getDialect());
+					getArtifact().getConfig().setDriverClassName(getArtifact().getConfig().getPoolProxy().getConfig().getDriverClassName());
+					getArtifact().getConfig().setEnableMetrics(getArtifact().getConfig().getPoolProxy().getConfig().getEnableMetrics());
+					getArtifact().getConfig().setIdleTimeout(getArtifact().getConfig().getPoolProxy().getConfig().getIdleTimeout());
+					getArtifact().getConfig().setJdbcUrl(getArtifact().getConfig().getPoolProxy().getConfig().getJdbcUrl());
+					getArtifact().getConfig().setMaximumPoolSize(getArtifact().getConfig().getPoolProxy().getConfig().getMaximumPoolSize());
+					getArtifact().getConfig().setMaxLifetime(getArtifact().getConfig().getPoolProxy().getConfig().getMaxLifetime());
+					getArtifact().getConfig().setMinimumIdle(getArtifact().getConfig().getPoolProxy().getConfig().getMinimumIdle());
+					getArtifact().getConfig().setPassword(getArtifact().getConfig().getPoolProxy().getConfig().getPassword());
+					getArtifact().getConfig().setUsername(getArtifact().getConfig().getPoolProxy().getConfig().getUsername());
+				}
 				// TODO: start an asynchronous task to synchronize jdbc
 				return super.save();
 			}

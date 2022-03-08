@@ -2,13 +2,11 @@ package be.nabu.eai.module.jdbc.pool;
 
 import java.util.List;
 
-import javax.validation.constraints.NotNull;
 import javax.xml.bind.annotation.XmlRootElement;
 import javax.xml.bind.annotation.XmlType;
 import javax.xml.bind.annotation.adapters.XmlJavaTypeAdapter;
 
 import be.nabu.eai.api.ArtifactFilter;
-import be.nabu.eai.api.EnvironmentSpecific;
 import be.nabu.eai.api.InterfaceFilter;
 import be.nabu.eai.api.ValueEnumerator;
 import be.nabu.eai.repository.jaxb.ArtifactXMLAdapter;
@@ -18,11 +16,12 @@ import be.nabu.libs.services.jdbc.api.DataSourceWithAffixes.AffixMapping;
 import be.nabu.libs.services.jdbc.api.SQLDialect;
 import be.nabu.libs.types.api.DefinedType;
 import be.nabu.libs.types.api.DefinedTypeRegistry;
+import be.nabu.libs.types.api.annotation.Field;
 import be.nabu.utils.security.EncryptionXmlAdapter;
 
 @XmlRootElement(name = "jdbcPool")
 @XmlType(propOrder = { "driverClassName", "jdbcUrl", "username", "password", "context", "connectionTimeout", "idleTimeout", "maximumPoolSize", "minimumIdle", "autoCommit", "maxLifetime", "dialect", "enableMetrics", 
-	"defaultLanguage", "translationGet", "translationSet", "affixes", "managedModels", "managedTypes" })
+	"defaultLanguage", "translationGet", "translationSet", "affixes", "managedModels", "managedTypes", "poolProxy" })
 public class JDBCPoolConfiguration {
 	private String driverClassName, jdbcUrl, username, password, context;
 	private Long connectionTimeout, idleTimeout, maxLifetime;
@@ -36,10 +35,11 @@ public class JDBCPoolConfiguration {
 	private DefinedService translationGet, translationSet;
 	private List<DefinedType> managedTypes;
 	private List<DefinedTypeRegistry> managedModels;
-	
-	@EnvironmentSpecific	// you can use a different database
+	private JDBCPoolArtifact poolProxy;
+
+	// you can use a different database
+	@Field(hide = "poolProxy != null", environmentSpecific = true, minOccurs = 1)
 	@ValueEnumerator(enumerator = SQLDriverEnumerator.class)
-	@NotNull
 	public String getDriverClassName() {
 		return driverClassName;
 	}
@@ -47,8 +47,7 @@ public class JDBCPoolConfiguration {
 		this.driverClassName = driverClassName;
 	}
 	
-	@EnvironmentSpecific
-	@NotNull
+	@Field(hide = "poolProxy != null", environmentSpecific = true, minOccurs = 1)
 	public String getJdbcUrl() {
 		return jdbcUrl;
 	}
@@ -56,7 +55,7 @@ public class JDBCPoolConfiguration {
 		this.jdbcUrl = jdbcUrl;
 	}
 	
-	@EnvironmentSpecific
+	@Field(hide = "poolProxy != null", environmentSpecific = true)
 	public String getUsername() {
 		return username;
 	}
@@ -64,7 +63,7 @@ public class JDBCPoolConfiguration {
 		this.username = username;
 	}
 	
-	@EnvironmentSpecific
+	@Field(hide = "poolProxy != null", environmentSpecific = true)
 	@XmlJavaTypeAdapter(value=EncryptionXmlAdapter.class)
 	public String getPassword() {
 		return password;
@@ -73,6 +72,7 @@ public class JDBCPoolConfiguration {
 		this.password = password;
 	}
 	
+	@Field(hide = "poolProxy != null", environmentSpecific = true)
 	public Long getConnectionTimeout() {
 		return connectionTimeout;
 	}
@@ -80,6 +80,7 @@ public class JDBCPoolConfiguration {
 		this.connectionTimeout = connectionTimeout;
 	}
 	
+	@Field(hide = "poolProxy != null", environmentSpecific = true)
 	public Long getIdleTimeout() {
 		return idleTimeout;
 	}
@@ -87,7 +88,7 @@ public class JDBCPoolConfiguration {
 		this.idleTimeout = idleTimeout;
 	}
 	
-	@EnvironmentSpecific
+	@Field(hide = "poolProxy != null", environmentSpecific = true)
 	public Integer getMaximumPoolSize() {
 		return maximumPoolSize;
 	}
@@ -95,6 +96,7 @@ public class JDBCPoolConfiguration {
 		this.maximumPoolSize = maximumPoolSize;
 	}
 	
+	@Field(hide = "poolProxy != null", environmentSpecific = true)
 	public Integer getMinimumIdle() {
 		return minimumIdle;
 	}
@@ -102,6 +104,7 @@ public class JDBCPoolConfiguration {
 		this.minimumIdle = minimumIdle;
 	}
 	
+	@Field(hide = "poolProxy != null", environmentSpecific = true)
 	public Boolean getAutoCommit() {
 		return autoCommit;
 	}
@@ -109,6 +112,7 @@ public class JDBCPoolConfiguration {
 		this.autoCommit = autoCommit;
 	}
 	
+	@Field(hide = "poolProxy != null", environmentSpecific = true)
 	public Long getMaxLifetime() {
 		return maxLifetime;
 	}
@@ -116,7 +120,7 @@ public class JDBCPoolConfiguration {
 		this.maxLifetime = maxLifetime;
 	}
 
-	@EnvironmentSpecific
+	@Field(hide = "poolProxy != null", environmentSpecific = true)
 	@ValueEnumerator(enumerator = SQLDialectEnumerator.class)
 	@XmlJavaTypeAdapter(ClassAdapter.class)
 	public Class<SQLDialect> getDialect() {
@@ -126,7 +130,7 @@ public class JDBCPoolConfiguration {
 		this.dialect = dialect;
 	}
 	
-	@EnvironmentSpecific
+	@Field(hide = "poolProxy != null", environmentSpecific = true)
 	public Boolean getEnableMetrics() {
 		return enableMetrics;
 	}
@@ -147,7 +151,7 @@ public class JDBCPoolConfiguration {
 	public void setContext(String context) {
 		this.context = context;
 	}
-	
+
 	public String getDefaultLanguage() {
 		return defaultLanguage;
 	}
@@ -188,6 +192,15 @@ public class JDBCPoolConfiguration {
 	}
 	public void setManagedModels(List<DefinedTypeRegistry> managedModels) {
 		this.managedModels = managedModels;
+	}
+
+	@Field(environmentSpecific = true)
+	@XmlJavaTypeAdapter(value = ArtifactXMLAdapter.class)
+	public JDBCPoolArtifact getPoolProxy() {
+		return poolProxy;
+	}
+	public void setPoolProxy(JDBCPoolArtifact poolProxy) {
+		this.poolProxy = poolProxy;
 	}
 	
 }

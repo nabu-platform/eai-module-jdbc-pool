@@ -96,44 +96,49 @@ public class JDBCPoolArtifact extends JAXBArtifact<JDBCPoolConfiguration> implem
 
 	@Override
 	public void start() {
-		// closing current dataSource
-		if (dataSource != null) {
-			dataSource.close();
-			dataSource = null;
+		if (getConfig().getPoolProxy() != null) {
+			getConfig().getPoolProxy().start();
 		}
-		try {
-			// we can not proceed if we don't have a JDBC url
-			if (getConfig().getJdbcUrl() != null) {
-				Properties properties = getAsProperties();
-				if (!properties.isEmpty()) {
-					HikariConfig hikariConfig = new HikariConfig(properties);
-					if (getConfiguration().getEnableMetrics() != null && getConfiguration().getEnableMetrics()) {
-						metrics = getRepository().getMetricInstance(getId());
-						if (metrics != null) {
-							hikariConfig.setMetricsTrackerFactory(new MetricsTrackerFactoryImpl(metrics));
-						}
-					}
-					dataSource = new HikariDataSource(hikariConfig);
-				}
-			}
-			else {
-				logger.warn("Can not start database connection " + getId() + ", no jdbcUrl has been configured");
-			}
-		}
-		catch (Exception e) {
-			logger.error("Could not initialize jdbc pool", e);
+		else {
+			// closing current dataSource
 			if (dataSource != null) {
-				try {
-					dataSource.close();
+				dataSource.close();
+				dataSource = null;
+			}
+			try {
+				// we can not proceed if we don't have a JDBC url
+				if (getConfig().getJdbcUrl() != null) {
+					Properties properties = getAsProperties();
+					if (!properties.isEmpty()) {
+						HikariConfig hikariConfig = new HikariConfig(properties);
+						if (getConfiguration().getEnableMetrics() != null && getConfiguration().getEnableMetrics()) {
+							metrics = getRepository().getMetricInstance(getId());
+							if (metrics != null) {
+								hikariConfig.setMetricsTrackerFactory(new MetricsTrackerFactoryImpl(metrics));
+							}
+						}
+						dataSource = new HikariDataSource(hikariConfig);
+					}
 				}
-				catch (Exception f) {
-					// best effort
-				}
-				finally {
-					dataSource = null;
+				else {
+					logger.warn("Can not start database connection " + getId() + ", no jdbcUrl has been configured");
 				}
 			}
-			throw new RuntimeException(e);
+			catch (Exception e) {
+				logger.error("Could not initialize jdbc pool", e);
+				if (dataSource != null) {
+					try {
+						dataSource.close();
+					}
+					catch (Exception f) {
+						// best effort
+					}
+					finally {
+						dataSource = null;
+					}
+				}
+				throw new RuntimeException(e);
+			}
 		}
 	}
 	
@@ -416,15 +421,25 @@ public class JDBCPoolArtifact extends JAXBArtifact<JDBCPoolConfiguration> implem
 	
 	@Override
 	public boolean isStarted() {
-		return dataSource != null;
+		if (getConfig().getPoolProxy() != null) {
+			return getConfig().getPoolProxy().isStarted();
+		}
+		else {
+			return dataSource != null;
+		}
 	}
 
 	@Override
 	public DataSource getDataSource() {
-		if (!isStarted()) {
-			start();
+		if (getConfig().getPoolProxy() != null) {
+			return getConfig().getPoolProxy().getDataSource();
 		}
-		return dataSource;
+		else {
+			if (!isStarted()) {
+				start();
+			}
+			return dataSource;
+		}
 	}
 
 	private Properties getAsProperties() throws IOException {
@@ -451,35 +466,45 @@ public class JDBCPoolArtifact extends JAXBArtifact<JDBCPoolConfiguration> implem
 	
 	@Override
 	public SQLDialect getDialect() {
-		try {
-			// if a dialect is set but the properties don't contain one (or a different one) reset it to null
-			if (dialect != null && (getConfiguration().getDialect() == null || !getConfiguration().getDialect().equals(dialect.getClass()))) {
-				dialect = null;
-			}
-			// if a dialect is configured but none is found, load it
-			if (dialect == null && getConfiguration().getDialect() != null) {
-				synchronized(this) {
-					if (dialect == null && getConfiguration().getDialect() != null) {
-						dialect = (SQLDialect) getConfiguration().getDialect().newInstance();
+		if (getConfig().getPoolProxy() != null) {
+			return getConfig().getPoolProxy().getDialect();
+		}
+		else {
+			try {
+				// if a dialect is set but the properties don't contain one (or a different one) reset it to null
+				if (dialect != null && (getConfiguration().getDialect() == null || !getConfiguration().getDialect().equals(dialect.getClass()))) {
+					dialect = null;
+				}
+				// if a dialect is configured but none is found, load it
+				if (dialect == null && getConfiguration().getDialect() != null) {
+					synchronized(this) {
+						if (dialect == null && getConfiguration().getDialect() != null) {
+							dialect = (SQLDialect) getConfiguration().getDialect().newInstance();
+						}
 					}
 				}
 			}
+			catch (Exception e) {
+				throw new RuntimeException(e);
+			}
+			return dialect;
 		}
-		catch (Exception e) {
-			throw new RuntimeException(e);
-		}
-		return dialect;
 	}
 
 	@Override
 	public boolean isAutoCommit() {
-		try {
-			// default is true according to https://github.com/brettwooldridge/HikariCP
-			// however, in the above (and as default practice) we set autocommit to false, it is _very_ rarely needed and only causes issues if not set correctly
-			return getConfiguration().getAutoCommit() != null && getConfiguration().getAutoCommit();
+		if (getConfig().getPoolProxy() != null) {
+			return getConfig().getPoolProxy().isAutoCommit();
 		}
-		catch (IOException e) {
-			throw new RuntimeException(e);
+		else {
+			try {
+				// default is true according to https://github.com/brettwooldridge/HikariCP
+				// however, in the above (and as default practice) we set autocommit to false, it is _very_ rarely needed and only causes issues if not set correctly
+				return getConfiguration().getAutoCommit() != null && getConfiguration().getAutoCommit();
+			}
+			catch (IOException e) {
+				throw new RuntimeException(e);
+			}
 		}
 	}
 
@@ -615,16 +640,21 @@ public class JDBCPoolArtifact extends JAXBArtifact<JDBCPoolConfiguration> implem
 
 	@Override
 	public List<ExternalDependency> getExternalDependencies() {
-		ExternalDependencyImpl dependency = new ExternalDependencyImpl();
-		dependency.setArtifactId(getId());
-		try {
-			dependency.setEndpoint(getUri());
+		if (getConfig().getPoolProxy() != null) {
+			return getConfig().getPoolProxy().getExternalDependencies();
 		}
-		catch (URISyntaxException e) {
-			// ignore
+		else {
+			ExternalDependencyImpl dependency = new ExternalDependencyImpl();
+			dependency.setArtifactId(getId());
+			try {
+				dependency.setEndpoint(getUri());
+			}
+			catch (URISyntaxException e) {
+				// ignore
+			}
+			dependency.setType("database");
+			return Arrays.asList(dependency);
 		}
-		dependency.setType("database");
-		return Arrays.asList(dependency);
 	}
 
 	// we want this accessible early so database operations can be done
