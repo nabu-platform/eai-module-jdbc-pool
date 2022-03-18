@@ -31,6 +31,7 @@ import be.nabu.libs.datastore.DatastoreOutputStream;
 import be.nabu.libs.property.ValueUtils;
 import be.nabu.libs.resources.ResourceUtils;
 import be.nabu.libs.services.ServiceRuntime;
+import be.nabu.libs.services.jdbc.api.DataSourceWithDialectProviderArtifact;
 import be.nabu.libs.services.jdbc.api.SQLDialect;
 import be.nabu.libs.types.DefinedTypeResolverFactory;
 import be.nabu.libs.types.api.DefinedType;
@@ -263,4 +264,9 @@ public class Services {
 		return JDBCPoolUtils.describeTables(catalogus, schema, tableNamePattern, resolve.getDataSource(), limitToCurrentSchema != null && limitToCurrentSchema);
 	}
 
+	@WebResult(name = "connectionId")
+	public String connectionForContext(@WebParam(name = "context") String context) {
+		DataSourceWithDialectProviderArtifact resolveFor = EAIResourceRepository.getInstance().resolveFor(context, DataSourceWithDialectProviderArtifact.class);
+		return resolveFor == null ? null : resolveFor.getId();
+	}
 }

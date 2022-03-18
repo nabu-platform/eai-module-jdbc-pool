@@ -20,8 +20,8 @@ import be.nabu.libs.types.api.annotation.Field;
 import be.nabu.utils.security.EncryptionXmlAdapter;
 
 @XmlRootElement(name = "jdbcPool")
-@XmlType(propOrder = { "driverClassName", "jdbcUrl", "username", "password", "context", "connectionTimeout", "idleTimeout", "maximumPoolSize", "minimumIdle", "autoCommit", "maxLifetime", "dialect", "enableMetrics", 
-	"defaultLanguage", "translationGet", "translationSet", "affixes", "managedModels", "managedTypes", "poolProxy" })
+@XmlType(propOrder = { "poolProxy", "driverClassName", "jdbcUrl", "username", "password", "context", "connectionTimeout", "idleTimeout", "maximumPoolSize", "minimumIdle", "autoCommit", "maxLifetime", "dialect", "enableMetrics", 
+	"defaultLanguage", "translationGet", "translationSet", "affixes", "managedModels", "managedTypes" })
 public class JDBCPoolConfiguration {
 	private String driverClassName, jdbcUrl, username, password, context;
 	private Long connectionTimeout, idleTimeout, maxLifetime;
