@@ -276,6 +276,7 @@ public class JDBCPoolUtils {
 	
 	@SuppressWarnings({ "unchecked", "unused" })
 	public static void dump(Connection connection, String catalogue, String schema, String tableNamePattern, Writer output, SQLDialect dialect, boolean includeDdl, boolean includeDml, String tableBlacklistRegex, String tableWhitelistRegex, List<DumpMapping> mappings) throws SQLException, IOException {
+		Logger logger = LoggerFactory.getLogger("jdbc.backup.dump");
 		ResultSet tables = connection.getMetaData().getTables(catalogue, schema, tableNamePattern, null);
 		try {
 			Map<String, Structure> tableMap = new HashMap<String, Structure>();
@@ -327,6 +328,7 @@ public class JDBCPoolUtils {
 					}
 				}
 				catch (Exception e) {
+					logger.error("Could not process table '" + tableName + "'", e);
 					output.write("-- Could not process table '" + tableName + "': " + e.getMessage().replaceAll("[\\s]+", " ") + "\n");
 				}
 			}
@@ -417,6 +419,7 @@ public class JDBCPoolUtils {
 						}
 					}
 					catch (Exception e) {
+						logger.error("Could not load DML for table '" + tableName + "'", e);
 						output.write("-- Could not load DML for table '" + tableName + "': " + (e.getMessage() == null ? "No Message" : e.getMessage().replaceAll("[\\s]+", " ")) + "\n");
 					}
 					finally {
@@ -433,6 +436,15 @@ public class JDBCPoolUtils {
 		finally {
 			tables.close();
 		}
+	}
+	
+	private Structure getTableStructure(Map<String, Structure> tables, String name) {
+		for (Map.Entry<String, Structure> table : tables.entrySet()) {
+			if (table.getKey().equalsIgnoreCase(name)) {
+				return table.getValue();
+			}
+		}
+		return null;
 	}
 	
 	@SuppressWarnings({ "rawtypes", "unchecked" })

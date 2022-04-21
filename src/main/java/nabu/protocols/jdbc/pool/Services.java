@@ -69,6 +69,7 @@ public class Services {
 		private String tableBlacklistRegex, tableWhitelistRegex;
 		private List<DumpMapping> mappings;
 		
+		@NotNull
 		@EnvironmentSpecific
 		@ValueEnumerator(enumerator = SQLDialectEnumerator.class)
 		@XmlJavaTypeAdapter(ClassAdapter.class)

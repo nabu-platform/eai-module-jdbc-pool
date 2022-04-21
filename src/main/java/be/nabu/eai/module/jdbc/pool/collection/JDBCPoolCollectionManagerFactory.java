@@ -368,6 +368,12 @@ public class JDBCPoolCollectionManagerFactory implements CollectionManagerFactor
 					if (isFromProject) {
 						continue;
 					}
+					// check that it is not deprecated, we don't want to start new projects with those
+					be.nabu.eai.repository.api.Node node = project.getRepository().getNode(registry.getId());
+					// even if the deprecation is in the future, we don't want to add it by default at this point
+					if (node != null && node.getDeprecated() != null) {
+						continue;
+					}
 					for (String namespace : registry.getNamespaces()) {
 						for (ComplexType potential : registry.getComplexTypes(namespace)) {
 							if (!(potential instanceof DefinedType)) {
