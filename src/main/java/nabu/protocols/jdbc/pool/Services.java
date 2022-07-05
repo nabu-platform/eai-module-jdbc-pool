@@ -126,6 +126,7 @@ public class Services {
 				information.setDriverClass(resolve.getConfig().getDriverClassName());
 				information.setJdbcUrl(resolve.getConfig().getJdbcUrl());
 				information.setUsername(resolve.getConfig().getUsername());
+				information.setProxy(resolve.getConfig().getPoolProxy() != null);
 				return information;
 			}
 		}

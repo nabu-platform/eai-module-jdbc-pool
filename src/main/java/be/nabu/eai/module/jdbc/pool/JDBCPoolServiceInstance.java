@@ -1,11 +1,13 @@
 package be.nabu.eai.module.jdbc.pool;
 
+import java.sql.Array;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 import be.nabu.libs.converter.ConverterFactory;
@@ -114,12 +116,14 @@ public class JDBCPoolServiceInstance implements ServiceInstance {
 									if (wrap == null) {
 										// if we can stringify the result, use strings instead
 										// this is mostly to support database-specific types like oracle.sql.TIMESTAMP
-										if (ConverterFactory.getInstance().getConverter().canConvert(clazz, String.class)) {
-											wrap = SimpleTypeWrapperFactory.getInstance().getWrapper().wrap(String.class);		
-										}
-										if (wrap == null) {
-											throw new RuntimeException("No simple type found for: " + clazz);
-										}
+										// @2022-06-22: the fallback is now always string, for example arrays etc
+//										if (ConverterFactory.getInstance().getConverter().canConvert(clazz, String.class)) {
+//											wrap = SimpleTypeWrapperFactory.getInstance().getWrapper().wrap(String.class);		
+//										}
+//										if (wrap == null) {
+//											throw new RuntimeException("No simple type found for: " + clazz);
+//										}
+										wrap = SimpleTypeWrapperFactory.getInstance().getWrapper().wrap(String.class);
 									}
 									structure.add(new SimpleElementImpl(metaData.getColumnLabel(i).replaceAll("[^\\w]+", ""), wrap, structure, new ValueImpl<Integer>(MinOccursProperty.getInstance(), 0)));
 									type = structure;
@@ -146,7 +150,12 @@ public class JDBCPoolServiceInstance implements ServiceInstance {
 							ComplexContent result = type.newInstance();
 							int column = 1;
 							for (Element<?> child : TypeUtils.getAllChildren(type)) {
-								result.set(child.getName(), executeQuery.getObject(column++));
+								Object object = executeQuery.getObject(column++);
+								// this will have been modelled as a string in the above logic
+								if (object instanceof Array) {
+									object = Arrays.asList(((Object[]) ((Array) object).getArray())).toString();
+								}
+								result.set(child.getName(), object);
 							}
 							results.add(result);
 						}

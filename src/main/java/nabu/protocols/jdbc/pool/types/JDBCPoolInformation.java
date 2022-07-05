@@ -2,7 +2,7 @@ package nabu.protocols.jdbc.pool.types;
 
 public class JDBCPoolInformation {
 	private String defaultLanguage;
-	private boolean translatable, started;
+	private boolean translatable, started, proxy;
 	private String jdbcUrl, username, driverClass, dialect;
 	public String getDefaultLanguage() {
 		return defaultLanguage;
@@ -45,5 +45,11 @@ public class JDBCPoolInformation {
 	}
 	public void setStarted(boolean started) {
 		this.started = started;
+	}
+	public boolean isProxy() {
+		return proxy;
+	}
+	public void setProxy(boolean proxy) {
+		this.proxy = proxy;
 	}
 }

@@ -26,6 +26,8 @@ import be.nabu.eai.repository.api.Repository;
 import be.nabu.eai.repository.artifacts.jaxb.JAXBArtifact;
 import be.nabu.eai.repository.util.SystemPrincipal;
 import be.nabu.libs.artifacts.ExternalDependencyImpl;
+import be.nabu.libs.artifacts.api.Artifact;
+import be.nabu.libs.artifacts.api.ArtifactProxy;
 import be.nabu.libs.artifacts.api.ContextualArtifact;
 import be.nabu.libs.artifacts.api.ExternalDependency;
 import be.nabu.libs.artifacts.api.ExternalDependencyArtifact;
@@ -73,7 +75,7 @@ import nabu.protocols.jdbc.pool.types.TableDescription;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 
-public class JDBCPoolArtifact extends JAXBArtifact<JDBCPoolConfiguration> implements StartableArtifact, StoppableArtifact, ContextualArtifact, DataSourceWithDialectProviderArtifact, DefinedService, TunnelableArtifact, DataSourceWithAffixes, DataSourceWithTranslator, ExternalDependencyArtifact {
+public class JDBCPoolArtifact extends JAXBArtifact<JDBCPoolConfiguration> implements StartableArtifact, StoppableArtifact, ContextualArtifact, DataSourceWithDialectProviderArtifact, DefinedService, TunnelableArtifact, DataSourceWithAffixes, DataSourceWithTranslator, ExternalDependencyArtifact, ArtifactProxy {
 
 	private HikariDataSource dataSource;
 	private Logger logger = LoggerFactory.getLogger(getClass());
@@ -97,7 +99,9 @@ public class JDBCPoolArtifact extends JAXBArtifact<JDBCPoolConfiguration> implem
 	@Override
 	public void start() {
 		if (getConfig().getPoolProxy() != null) {
-			getConfig().getPoolProxy().start();
+			if (!getConfig().getPoolProxy().isStarted()) {
+				getConfig().getPoolProxy().start();
+			}
 		}
 		else {
 			// closing current dataSource
@@ -666,6 +670,11 @@ public class JDBCPoolArtifact extends JAXBArtifact<JDBCPoolConfiguration> implem
 	@Override
 	public StartPhase getPhase() {
 		return StartPhase.EARLY;
+	}
+
+	@Override
+	public Artifact getProxied() {
+		return getConfig().getPoolProxy();
 	}
 	
 }
