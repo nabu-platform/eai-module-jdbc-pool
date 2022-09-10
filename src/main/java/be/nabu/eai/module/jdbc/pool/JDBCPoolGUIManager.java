@@ -45,16 +45,20 @@ import javafx.scene.control.SplitPane;
 import javafx.scene.control.Tab;
 import javafx.scene.control.TabPane;
 import javafx.scene.control.TabPane.TabClosingPolicy;
+import javafx.scene.control.TextField;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyCodeCombination;
 import javafx.scene.input.KeyCombination;
 import javafx.scene.layout.AnchorPane;
 import javafx.scene.layout.HBox;
+import javafx.scene.layout.Priority;
 import javafx.scene.layout.VBox;
 
 public class JDBCPoolGUIManager extends BaseJAXBComplexGUIManager<JDBCPoolConfiguration, JDBCPoolArtifact> {
 
 	private Label runLabel;
+	private TextField limit;
+	private TextField offset;
 
 	public JDBCPoolGUIManager() {
 		super("JDBC Pool", JDBCPoolArtifact.class, new JDBCPoolManager(), JDBCPoolConfiguration.class);
@@ -130,6 +134,26 @@ public class JDBCPoolGUIManager extends BaseJAXBComplexGUIManager<JDBCPoolConfig
 			}
 		});
 		buttons.getChildren().addAll(run, runLabel);
+		
+		HBox spacer = new HBox();
+		HBox.setHgrow(spacer, Priority.ALWAYS);
+		
+		HBox limits = new HBox();
+		Label lblLimit = new Label("Limit");
+		Label lblOffset = new Label("Offset");
+		lblLimit.setAlignment(Pos.CENTER_LEFT);
+		lblOffset.setAlignment(Pos.CENTER_LEFT);
+		limits.setAlignment(Pos.CENTER_LEFT);
+		HBox.setMargin(lblLimit, new Insets(0, 10, 0, 0));
+		HBox.setMargin(lblOffset, new Insets(0, 10, 0, 30));
+		limit = new TextField();
+		limit.setText("" + RunService.AUTO_LIMIT);
+		offset = new TextField();
+		offset.setText("0");
+		limits.getChildren().addAll(lblLimit, limit, lblOffset, offset);
+		
+		buttons.getChildren().addAll(spacer, limits);
+		
 		buttons.setAlignment(Pos.CENTER_LEFT);
 		editor.subscribe("CONTROL_ENTERED", new EventHandler<Event>() {
 			@Override
@@ -159,8 +183,14 @@ public class JDBCPoolGUIManager extends BaseJAXBComplexGUIManager<JDBCPoolConfig
 						ComplexContent input = artifact.getServiceInterface().getInputDefinition().newInstance();
 						input.set("sql", query);
 						if (query.trim().startsWith("select")) {
-							input.set("limit", RunService.AUTO_LIMIT);
-							input.set("offset", page * RunService.AUTO_LIMIT);
+//							input.set("limit", RunService.AUTO_LIMIT);
+//							input.set("offset", page * RunService.AUTO_LIMIT);
+							if (limit.getText() != null && limit.getText().matches("^[0-9]+$")) {
+								input.set("limit", Integer.parseInt(limit.getText()));
+							}
+							if (offset.getText() != null && offset.getText().matches("^[0-9]+$")) {
+								input.set("offset", Integer.parseInt(offset.getText()));
+							}
 						}
 						Future<ServiceResult> run = artifact.getRepository().getServiceRunner().run(artifact, artifact.getRepository().newExecutionContext(SystemPrincipal.ROOT), input);
 						ServiceResult serviceResult = run.get();

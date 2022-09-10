@@ -8,7 +8,9 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import be.nabu.libs.converter.ConverterFactory;
 import be.nabu.libs.services.api.ExecutionContext;
@@ -53,12 +55,16 @@ public class JDBCPoolServiceInstance implements ServiceInstance {
 		Connection connection = null;
 		try {
 			if (!pool.isAutoCommit()) {
+				String poolId = pool.getId();
+				if (pool.getConfig().getPoolProxy() != null) {
+					poolId = pool.getConfig().getPoolProxy().getId();
+				}
 				String transactionId = content == null ? null : (String) content.get(JDBCService.TRANSACTION);
 				// if there is no open transaction, create one
-				Transactionable transactionable = executionContext.getTransactionContext().get(transactionId, pool.getId());
+				Transactionable transactionable = executionContext.getTransactionContext().get(transactionId, poolId);
 				if (transactionable == null) {
 					connection = pool.getDataSource().getConnection();
-					executionContext.getTransactionContext().add(transactionId, new ConnectionTransactionable(pool.getId(), connection));
+					executionContext.getTransactionContext().add(transactionId, new ConnectionTransactionable(poolId, connection));
 				}
 				else {
 					connection = ((ConnectionTransactionable) transactionable).getConnection();
@@ -98,6 +104,7 @@ public class JDBCPoolServiceInstance implements ServiceInstance {
 					}
 					ResultSet executeQuery = statement.executeQuery(sql);
 					try {
+						Map<String, Integer> columnCounter = new HashMap<String, Integer>();
 						ComplexType type = content.get("resultType") == null ? null : (ComplexType) DefinedTypeResolverFactory.getInstance().getResolver().resolve((String) content.get("resultType"));
 						if (type == null) {
 							Structure structure = new Structure();
@@ -112,7 +119,10 @@ public class JDBCPoolServiceInstance implements ServiceInstance {
 									if (java.util.Date.class.isAssignableFrom(clazz)) {
 										clazz = java.util.Date.class;
 									}
-									DefinedSimpleType<?> wrap = SimpleTypeWrapperFactory.getInstance().getWrapper().wrap(clazz);
+									//DefinedSimpleType<?> wrap = SimpleTypeWrapperFactory.getInstance().getWrapper().wrap(clazz);
+									// in the past we tried to deduce the simple type but this can lead to errors if the data is not consistent
+									// the visualization is stringified anyway, so the only difference is if there are slightly special stringification methods which are rare
+									DefinedSimpleType<?> wrap = null;
 									if (wrap == null) {
 										// if we can stringify the result, use strings instead
 										// this is mostly to support database-specific types like oracle.sql.TIMESTAMP
@@ -125,7 +135,17 @@ public class JDBCPoolServiceInstance implements ServiceInstance {
 //										}
 										wrap = SimpleTypeWrapperFactory.getInstance().getWrapper().wrap(String.class);
 									}
-									structure.add(new SimpleElementImpl(metaData.getColumnLabel(i).replaceAll("[^\\w]+", ""), wrap, structure, new ValueImpl<Integer>(MinOccursProperty.getInstance(), 0)));
+									// the amount of columns must match the amount of fields because they are assigned in order
+									// if multiple columns have the same name (e.g. through join), we force them to be unique
+									String columnName = metaData.getColumnLabel(i).replaceAll("[^\\w]+", "");
+									if (columnCounter.containsKey(columnName)) {
+										columnCounter.put(columnName, columnCounter.get(columnName) + 1);
+										columnName += columnCounter.get(columnName);
+									}
+									else {
+										columnCounter.put(columnName, 0);
+									}
+									structure.add(new SimpleElementImpl(columnName, wrap, structure, new ValueImpl<Integer>(MinOccursProperty.getInstance(), 0)));
 									type = structure;
 								}
 								catch (Exception e) {
