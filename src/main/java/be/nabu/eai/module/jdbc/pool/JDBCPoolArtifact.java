@@ -196,6 +196,7 @@ public class JDBCPoolArtifact extends JAXBArtifact<JDBCPoolConfiguration> implem
 	public List<TableChange> synchronizeTypes(boolean force, boolean execute, List<DefinedType> managedTypes) throws SQLException {
 		List<TableChange> changes = new ArrayList<TableChange>();
 		if (managedTypes != null && !managedTypes.isEmpty()) {
+			logger.info("Starting DDL synchronization for " + getId() + " (force = " + force + ")");
 			try {
 				List<ComplexType> typesToSync = getTableTypes(managedTypes);
 				DataSource dataSource = getDataSource();
@@ -390,6 +391,7 @@ public class JDBCPoolArtifact extends JAXBArtifact<JDBCPoolConfiguration> implem
 					finally {
 						connection.close();
 					}
+					logger.info("Successfully finalized DDL synchronization for " + getId());
 				}
 				else {
 					throw new IllegalStateException("A valid datasource can not be obtained for " + getId() + ", make sure the connection is valid");

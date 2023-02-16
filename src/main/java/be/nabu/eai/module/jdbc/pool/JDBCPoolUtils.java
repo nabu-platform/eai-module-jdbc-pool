@@ -72,6 +72,7 @@ public class JDBCPoolUtils {
 		
 		private boolean reverse;
 		private Map<String, List<String>> foreign = new HashMap<String, List<String>>();
+		private Logger logger = LoggerFactory.getLogger(getClass());
 
 		public ForeignKeyComparator(boolean reverse) {
 			this.reverse = reverse;
@@ -87,7 +88,13 @@ public class JDBCPoolUtils {
 					if (foreign != null) {
 						String other = foreign.getValue().split(":")[0];
 						result.add(other);
-						result.addAll(getForeign((ComplexType) DefinedTypeResolverFactory.getInstance().getResolver().resolve(other)));
+						DefinedType resolve = DefinedTypeResolverFactory.getInstance().getResolver().resolve(other);
+						if (!(resolve instanceof ComplexType)) {
+							logger.warn("Could not resolve foreign key to type: " + other);
+						}
+						else {
+							result.addAll(getForeign((ComplexType) resolve));
+						}
 					}
 				}
 			}

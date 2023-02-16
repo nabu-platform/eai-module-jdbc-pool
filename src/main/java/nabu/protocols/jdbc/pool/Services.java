@@ -23,23 +23,38 @@ import be.nabu.eai.api.ValueEnumerator;
 import be.nabu.eai.module.jdbc.pool.JDBCPoolArtifact;
 import be.nabu.eai.module.jdbc.pool.JDBCPoolUtils;
 import be.nabu.eai.module.jdbc.pool.SQLDialectEnumerator;
+import be.nabu.eai.repository.EAIRepositoryUtils;
 import be.nabu.eai.repository.EAIResourceRepository;
 import be.nabu.eai.repository.api.Entry;
 import be.nabu.eai.repository.util.ClassAdapter;
 import be.nabu.libs.artifacts.api.Artifact;
+import be.nabu.libs.artifacts.api.ArtifactProxy;
 import be.nabu.libs.datastore.DatastoreOutputStream;
 import be.nabu.libs.property.ValueUtils;
 import be.nabu.libs.resources.ResourceUtils;
 import be.nabu.libs.services.ServiceRuntime;
+import be.nabu.libs.services.ServiceUtils;
+import be.nabu.libs.services.api.ServiceException;
+import be.nabu.libs.services.jdbc.JDBCService;
+import be.nabu.libs.services.jdbc.JDBCServiceInstance;
+import be.nabu.libs.services.jdbc.JDBCUtils;
 import be.nabu.libs.services.jdbc.api.DataSourceWithDialectProviderArtifact;
 import be.nabu.libs.services.jdbc.api.SQLDialect;
 import be.nabu.libs.types.DefinedTypeResolverFactory;
+import be.nabu.libs.types.TypeUtils;
+import be.nabu.libs.types.api.ComplexContent;
+import be.nabu.libs.types.api.ComplexType;
 import be.nabu.libs.types.api.DefinedType;
+import be.nabu.libs.types.api.Element;
+import be.nabu.libs.types.api.SimpleType;
 import be.nabu.libs.types.properties.CollectionNameProperty;
+import be.nabu.libs.types.properties.ForeignKeyProperty;
+import be.nabu.libs.types.properties.PrimaryKeyProperty;
 import be.nabu.utils.io.IOUtils;
 import be.nabu.utils.io.api.ByteBuffer;
 import be.nabu.utils.io.api.ReadableContainer;
 import nabu.protocols.jdbc.pool.types.JDBCPoolInformation;
+import nabu.protocols.jdbc.pool.types.SqlResult;
 import nabu.protocols.jdbc.pool.types.TableChange;
 import nabu.protocols.jdbc.pool.types.TableDescription;
 
@@ -109,6 +124,34 @@ public class Services {
 		public void setTableWhitelistRegex(String tableWhitelistRegex) {
 			this.tableWhitelistRegex = tableWhitelistRegex;
 		}
+	}
+	
+	public SqlResult execute(@WebParam(name = "jdbcPoolId") String jdbcPoolId, @WebParam(name = "sql") String sql, @WebParam(name = "limit") Integer limit, @WebParam(name = "offset") Long offset) throws ServiceException {
+		JDBCPoolArtifact resolve;
+		if (jdbcPoolId != null) { 
+			resolve = (JDBCPoolArtifact) EAIResourceRepository.getInstance().resolve(jdbcPoolId);
+		}
+		else {
+			DataSourceWithDialectProviderArtifact resolveFor = EAIResourceRepository.getInstance().resolveFor(ServiceUtils.getServiceContext(ServiceRuntime.getRuntime()), DataSourceWithDialectProviderArtifact.class);
+			if (resolveFor instanceof ArtifactProxy)  {
+				Artifact proxied = ((ArtifactProxy) resolveFor).getProxied();
+				if (proxied instanceof DataSourceWithDialectProviderArtifact) {
+					resolveFor = (DataSourceWithDialectProviderArtifact) proxied;
+				}
+			}
+			resolve = (JDBCPoolArtifact) resolveFor;
+		}
+		if (resolve == null) {
+			throw new IllegalStateException("Could not find matching jdbc pool id");
+		}
+		ComplexContent input = resolve.getServiceInterface().getInputDefinition().newInstance();
+		input.set("limit", limit);
+		input.set("offset", offset);
+		input.set("sql", sql);
+		ComplexContent output = resolve.newInstance().execute(ServiceRuntime.getRuntime().getExecutionContext(), input);
+		SqlResult result = new SqlResult();
+		result.setResults(output == null ? null : (List<Object>) output.get("results"));
+		return result;
 	}
 	
 	@WebResult(name = "information")
@@ -268,7 +311,63 @@ public class Services {
 
 	@WebResult(name = "connectionId")
 	public String connectionForContext(@WebParam(name = "context") String context) {
+		if (context == null) {
+			context = ServiceUtils.getServiceContext(ServiceRuntime.getRuntime());
+		}
+		if (context == null) {
+			throw new IllegalArgumentException("No context given nor could a service context be determined");
+		}
 		DataSourceWithDialectProviderArtifact resolveFor = EAIResourceRepository.getInstance().resolveFor(context, DataSourceWithDialectProviderArtifact.class);
 		return resolveFor == null ? null : resolveFor.getId();
+	}
+	
+	@WebResult(name = "sqls")
+	public String updateReference(@NotNull @WebParam(name = "connectionId") String connectionId, @NotNull @WebParam(name = "typeId") String typeId, @WebParam(name = "oldValue") Object oldValue, @WebParam(name = "newValue") Object newValue) {
+		// "usually" a foreign key points to a primary key
+		// it "can" also point to a unique constrained key, but we generally don't use this
+		// so for now, we just resolve the primary key field from the given type
+		DefinedType type = DefinedTypeResolverFactory.getInstance().getResolver().resolve(typeId);
+		if (type == null) {
+			throw new IllegalArgumentException("Type is required");
+		}
+		String fieldName = null;
+		for (Element<?> child : TypeUtils.getAllChildren((ComplexType) type)) {
+			Boolean primaryKey = ValueUtils.getValue(PrimaryKeyProperty.getInstance(), child.getProperties());
+			if (primaryKey != null && primaryKey) {
+				fieldName = child.getName();
+				break;
+			}
+		}
+		if (fieldName == null) {
+			throw new IllegalArgumentException("Can not find primary key to re-reference");
+		}
+		JDBCPoolArtifact pool = (JDBCPoolArtifact) EAIResourceRepository.getInstance().resolve(connectionId);
+		if (pool == null) {
+			throw new IllegalArgumentException("Could not find pool: " + connectionId);
+		}
+		List<String> sqls = new ArrayList<String>();
+		String foreignKeyToMatch = typeId + ":" + fieldName;
+		for (DefinedType managedType : pool.getManagedTypes()) {
+			for (ComplexType tableType : JDBCUtils.getAllTypes((ComplexType) managedType)) {
+				for (Element<?> child : JDBCUtils.getFieldsInTable(tableType)) {
+					String foreignKey = ValueUtils.getValue(ForeignKeyProperty.getInstance(), child.getProperties());
+					// got one, generate an update statement
+					if (foreignKey != null && foreignKey.equals(foreignKeyToMatch)) {
+						String tableName = JDBCServiceInstance.uncamelify(JDBCUtils.getTypeName(tableType, true));
+						boolean isNumber = Number.class.isAssignableFrom(((SimpleType<?>) child.getType()).getInstanceClass());
+						String tableFieldName = EAIRepositoryUtils.uncamelify(child.getName());
+						String update = "update " + tableName + " set " + tableFieldName + " = " + (isNumber ? "" : "'") + newValue + (isNumber ? "" : "'") + " where " + tableFieldName + " = " + (isNumber ? "" : "'") + oldValue + (isNumber ? "" : "'");
+						sqls.add(update);
+						// TODO: can autorun these if we are sure
+						// could also switch to prepared at that point if necessary
+					}
+				}
+			}
+		}
+		StringBuilder result = new StringBuilder();
+		for (String sql : sqls) {
+			result.append(sql).append(";\n");
+		}
+		return result.toString();
 	}
 }
