@@ -398,8 +398,10 @@ public class JDBCPoolCollectionManagerFactory implements CollectionManagerFactor
 				}
 				
 				// let's automatically add the translation providers for CMS, by default we assume you will use CMS
-				jdbc.getConfig().setTranslationGet((DefinedService) project.getRepository().resolve("nabu.cms.core.providers.translation.jdbc.get"));
-				jdbc.getConfig().setTranslationSet((DefinedService) project.getRepository().resolve("nabu.cms.core.providers.translation.jdbc.set"));
+				//jdbc.getConfig().setTranslationGet((DefinedService) project.getRepository().resolve("nabu.cms.core.providers.translation.jdbc.get"));
+				//jdbc.getConfig().setTranslationSet((DefinedService) project.getRepository().resolve("nabu.cms.core.providers.translation.jdbc.set"));
+				jdbc.getConfig().setTranslationGet((DefinedService) project.getRepository().resolve("nabu.cms.core.providers.translation.getById"));
+				jdbc.getConfig().setTranslationSet((DefinedService) project.getRepository().resolve("nabu.cms.core.providers.translation.setById"));
 			}
 			
 			new JDBCPoolManager().save((ResourceEntry) project.getRepository().getEntry(jdbc.getId()), jdbc);

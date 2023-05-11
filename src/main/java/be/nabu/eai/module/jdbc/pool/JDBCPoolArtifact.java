@@ -633,7 +633,7 @@ public class JDBCPoolArtifact extends JAXBArtifact<JDBCPoolConfiguration> implem
 	@Override
 	public JDBCTranslator getTranslator() {
 		if (translator == null) {
-			translator = getConfig().getTranslationGet() != null && getConfig().getTranslationSet() != null
+			translator = getConfig().getTranslationGet() != null || getConfig().getTranslationSet() != null
 				? POJOUtils.newProxy(
 					JDBCTranslator.class,
 					getRepository(), 
