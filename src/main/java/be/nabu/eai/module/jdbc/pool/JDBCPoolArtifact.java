@@ -671,7 +671,7 @@ public class JDBCPoolArtifact extends JAXBArtifact<JDBCPoolConfiguration> implem
 	// we want this accessible early so database operations can be done
 	@Override
 	public StartPhase getPhase() {
-		return StartPhase.EARLY;
+		return StartPhase.FIRST;
 	}
 
 	@Override
