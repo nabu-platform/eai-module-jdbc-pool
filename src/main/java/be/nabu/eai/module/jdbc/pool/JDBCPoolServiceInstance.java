@@ -12,6 +12,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import javax.sql.DataSource;
+
 import be.nabu.libs.converter.ConverterFactory;
 import be.nabu.libs.services.api.ExecutionContext;
 import be.nabu.libs.services.api.Service;
@@ -63,7 +65,11 @@ public class JDBCPoolServiceInstance implements ServiceInstance {
 				// if there is no open transaction, create one
 				Transactionable transactionable = executionContext.getTransactionContext().get(transactionId, poolId);
 				if (transactionable == null) {
-					connection = pool.getDataSource().getConnection();
+					DataSource dataSource = pool.getDataSource();
+					if (dataSource == null) {
+						throw new IllegalStateException("Could not retrieve datasource for connection " + pool.getId() + ", it was probably not initialized correctly");
+					}
+					connection = dataSource.getConnection();
 					executionContext.getTransactionContext().add(transactionId, new ConnectionTransactionable(poolId, connection));
 				}
 				else {
