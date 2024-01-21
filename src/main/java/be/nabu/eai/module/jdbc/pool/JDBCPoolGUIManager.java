@@ -5,16 +5,23 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.Charset;
 import java.text.ParseException;
+import java.util.ArrayList;
 import java.util.Date;
+import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.Future;
-
-import com.sun.webkit.ContextMenu.ShowContext;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import be.nabu.eai.developer.Main.QuerySheet;
 import be.nabu.eai.developer.MainController;
 import be.nabu.eai.developer.managers.base.BaseArtifactGUIInstance;
 import be.nabu.eai.developer.managers.base.BaseJAXBComplexGUIManager;
+import be.nabu.eai.developer.managers.util.SimpleProperty;
+import be.nabu.eai.developer.managers.util.SimplePropertyUpdater;
 import be.nabu.eai.developer.util.EAIDeveloperUtils;
 import be.nabu.eai.developer.util.RunService;
 import be.nabu.eai.module.types.structure.GenerateXSDMenuEntry;
@@ -183,7 +190,6 @@ public class JDBCPoolGUIManager extends BaseJAXBComplexGUIManager<JDBCPoolConfig
 		}
 		// remove all comments
 		content = content.replaceAll("(?m)--.*$", "").trim();
-		System.out.println("Running query: " + content);
 		return content;
 	}
 	
@@ -289,7 +295,7 @@ public class JDBCPoolGUIManager extends BaseJAXBComplexGUIManager<JDBCPoolConfig
 			@Override
 			public void handle(ActionEvent arg0) {
 				String content = getQueryToRun(editor);
-				runQuery(artifact, content, results, 0, editor);
+				runQuery(artifact, content, results, 0, editor, true);
 				arg0.consume();
 			}
 
@@ -320,7 +326,7 @@ public class JDBCPoolGUIManager extends BaseJAXBComplexGUIManager<JDBCPoolConfig
 			@Override
 			public void handle(Event arg0) {
 				String content = getQueryToRun(editor);
-				runQuery(artifact, content, results, 0, editor);
+				runQuery(artifact, content, results, 0, editor, true);
 				arg0.consume();
 			}
 		});
@@ -330,90 +336,148 @@ public class JDBCPoolGUIManager extends BaseJAXBComplexGUIManager<JDBCPoolConfig
 		return split;
 	}
 	
-	private void runQuery(JDBCPoolArtifact artifact, String query, VBox results, int page, AceEditor editor) {
+	@SuppressWarnings({ "unchecked", "rawtypes" })
+	private void runQuery(JDBCPoolArtifact artifact, String query, VBox results, int page, AceEditor editor, boolean first) {
+		System.out.println("Running query: " + query);
 		results.getChildren().clear();
 		if (query != null && !query.trim().isEmpty()) {
-			MainController.getInstance().offload(new Runnable() {
-				@Override
-				public void run() {
-					Date date = new Date();
-					try {
-						ComplexContent input = artifact.getServiceInterface().getInputDefinition().newInstance();
-						input.set("sql", query);
-						if (query.trim().startsWith("select")) {
-//							input.set("limit", RunService.AUTO_LIMIT);
-//							input.set("offset", page * RunService.AUTO_LIMIT);
-							if (limit.getText() != null && limit.getText().matches("^[0-9]+$")) {
-								input.set("limit", Integer.parseInt(limit.getText()));
-							}
-							if (offset.getText() != null && offset.getText().matches("^[0-9]+$")) {
-								input.set("offset", Integer.parseInt(offset.getText()));
-							}
+			// we find all variable notations
+			Pattern pattern = Pattern.compile("\\$\\{[^}]+\\}");
+			Matcher matcher = pattern.matcher(query);
+			Set<Property<?>> properties = new LinkedHashSet<Property<?>>();
+			// we want to keep each name only once, it might be repeated
+			List<String> names = new ArrayList<String>();
+			while (matcher.find()) {
+				// full match
+				String variable = matcher.group();
+				// remove the syntax
+				variable = variable.substring(2, variable.length() - 1).trim();
+				if (!names.contains(variable)) {
+					properties.add(new SimpleProperty<String>(variable, String.class, false));
+					names.add(variable);
+				}
+			}
+			if (!properties.isEmpty()) {
+				if (!first) {
+					throw new IllegalStateException("The query should not contain any more variables: " + query);
+				}
+				// get the state to see if we have remembered something
+				Map<String, String> state = (Map<String, String>) MainController.getInstance().getState(JDBCPoolGUIManager.class, "variables");
+				final Map<String, String> finalState = state == null ? new HashMap<String, String>() : state;
+				List<Value<?>> values = new ArrayList<Value<?>>();
+				if (state != null) {
+					for (Property<?> property : properties) {
+						String value = state.get(property.getName());
+						if (value != null && !value.trim().isEmpty()) {
+							values.add(new ValueImpl(property, value));
 						}
-						Future<ServiceResult> run = artifact.getRepository().getServiceRunner().run(artifact, artifact.getRepository().newExecutionContext(SystemPrincipal.ROOT), input);
-						ServiceResult serviceResult = run.get();
-						ComplexContent output = serviceResult.getOutput();
-						// we probably weren't able to parse it, get the stringified version (check RemoteServer to see how this is done)
-						Object object = output == null ? null : output.get("content");
-						// when running locally, you get a parsed result from the server which is a list of objects, we stringify it so it follows the same paradigm
-						if (object == null && output != null && output.get("results") != null) {
-							XMLBinding xmlBinding = new XMLBinding(output.getType(), Charset.defaultCharset());
-							ByteArrayOutputStream stream = new ByteArrayOutputStream();
-							xmlBinding.marshal(stream, output);
-							object = new String(stream.toByteArray());
-						}
-						if (object != null) {
-							Structure content = GenerateXSDMenuEntry.generateFromXML(object.toString(), Charset.forName("UTF-8"));
-							Element<?> element = content.get("results");
-							// if we have a results element, make sure it's a list, if there is only one hit, it will not be autogenerated into a list but a singular element
-							if (element != null) {
-								element.setProperty(new ValueImpl<Integer>(MaxOccursProperty.getInstance(), 0));
-							}
-							XMLBinding binding = new XMLBinding(content, Charset.forName("UTF-8"));
-							ComplexContent unmarshal = binding.unmarshal(new ByteArrayInputStream(object.toString().getBytes(Charset.forName("UTF-8"))), new Window[0]);
-							Platform.runLater(new Runnable() {
-								@Override
-								public void run() {
-									MainController.getInstance().showContent(results, unmarshal, null);
-								}
-							});
-						}
-						else if (serviceResult.getException() != null) {
-							Label emptyLabel = new Label("Your query could not be run correctly: " + serviceResult.getException().getMessage());
-							emptyLabel.setPadding(new Insets(10));
-							Platform.runLater(new Runnable() {
-								@Override
-								public void run() {
-									results.getChildren().add(emptyLabel);
-								}
-							});
-						}
-						else {
-							Label emptyLabel = new Label("No results for this query");
-							emptyLabel.setPadding(new Insets(10));
-							Platform.runLater(new Runnable() {
-								@Override
-								public void run() {
-									results.getChildren().add(emptyLabel);
-								}
-							});
-						}
-					}
-					catch (Exception e) {
-						e.printStackTrace();
-						MainController.getInstance().notify(e);
-					}
-					finally {
-						Platform.runLater(new Runnable() {
-							@Override
-							public void run() {
-								runLabel.setText("Run in: " + (new Date().getTime() - date.getTime()) + "ms");
-								editor.requestFocus();
-							}
-						});
 					}
 				}
-			}, true, "Running: " + query);
+				SimplePropertyUpdater updater = new SimplePropertyUpdater(true, properties, values.toArray(new Value[0]));
+				EAIDeveloperUtils.buildPopup(MainController.getInstance(), updater, "Set query properties", new EventHandler<ActionEvent>() {
+					@Override
+					public void handle(ActionEvent arg0) {
+						String rewritten = query;
+						for (Property<?> property : properties) {
+							Object value = updater.getValue(property.getName());
+							String string = value == null || value.toString().trim().isEmpty() ? null : value.toString();
+							if (string == null) {
+								finalState.remove(property.getName());
+								rewritten = rewritten.replaceAll("\\$\\{[\\s]*" + property.getName() + "[\\s]*\\}", "");
+							}
+							else {
+								finalState.put(property.getName(), string);
+								rewritten = rewritten.replaceAll("\\$\\{[\\s]*" + property.getName() + "[\\s]*\\}", string);
+							}
+						}
+						MainController.getInstance().setState(JDBCPoolGUIManager.class, "variables", finalState);
+						runQuery(artifact, rewritten, results, page, editor, false);
+					}
+				}, false);
+			}
+			else {
+				MainController.getInstance().offload(new Runnable() {
+					@Override
+					public void run() {
+						Date date = new Date();
+						try {
+							ComplexContent input = artifact.getServiceInterface().getInputDefinition().newInstance();
+							input.set("sql", query);
+							if (query.trim().startsWith("select")) {
+	//							input.set("limit", RunService.AUTO_LIMIT);
+	//							input.set("offset", page * RunService.AUTO_LIMIT);
+								if (limit.getText() != null && limit.getText().matches("^[0-9]+$")) {
+									input.set("limit", Integer.parseInt(limit.getText()));
+								}
+								if (offset.getText() != null && offset.getText().matches("^[0-9]+$")) {
+									input.set("offset", Integer.parseInt(offset.getText()));
+								}
+							}
+							Future<ServiceResult> run = artifact.getRepository().getServiceRunner().run(artifact, artifact.getRepository().newExecutionContext(SystemPrincipal.ROOT), input);
+							ServiceResult serviceResult = run.get();
+							ComplexContent output = serviceResult.getOutput();
+							// we probably weren't able to parse it, get the stringified version (check RemoteServer to see how this is done)
+							Object object = output == null ? null : output.get("content");
+							// when running locally, you get a parsed result from the server which is a list of objects, we stringify it so it follows the same paradigm
+							if (object == null && output != null && output.get("results") != null) {
+								XMLBinding xmlBinding = new XMLBinding(output.getType(), Charset.defaultCharset());
+								ByteArrayOutputStream stream = new ByteArrayOutputStream();
+								xmlBinding.marshal(stream, output);
+								object = new String(stream.toByteArray());
+							}
+							if (object != null) {
+								Structure content = GenerateXSDMenuEntry.generateFromXML(object.toString(), Charset.forName("UTF-8"));
+								Element<?> element = content.get("results");
+								// if we have a results element, make sure it's a list, if there is only one hit, it will not be autogenerated into a list but a singular element
+								if (element != null) {
+									element.setProperty(new ValueImpl<Integer>(MaxOccursProperty.getInstance(), 0));
+								}
+								XMLBinding binding = new XMLBinding(content, Charset.forName("UTF-8"));
+								ComplexContent unmarshal = binding.unmarshal(new ByteArrayInputStream(object.toString().getBytes(Charset.forName("UTF-8"))), new Window[0]);
+								Platform.runLater(new Runnable() {
+									@Override
+									public void run() {
+										MainController.getInstance().showContent(results, unmarshal, null);
+									}
+								});
+							}
+							else if (serviceResult.getException() != null) {
+								Label emptyLabel = new Label("Your query could not be run correctly: " + serviceResult.getException().getMessage());
+								emptyLabel.setPadding(new Insets(10));
+								Platform.runLater(new Runnable() {
+									@Override
+									public void run() {
+										results.getChildren().add(emptyLabel);
+									}
+								});
+							}
+							else {
+								Label emptyLabel = new Label("No results for this query");
+								emptyLabel.setPadding(new Insets(10));
+								Platform.runLater(new Runnable() {
+									@Override
+									public void run() {
+										results.getChildren().add(emptyLabel);
+									}
+								});
+							}
+						}
+						catch (Exception e) {
+							e.printStackTrace();
+							MainController.getInstance().notify(e);
+						}
+						finally {
+							Platform.runLater(new Runnable() {
+								@Override
+								public void run() {
+									runLabel.setText("Run in: " + (new Date().getTime() - date.getTime()) + "ms");
+									editor.requestFocus();
+								}
+							});
+						}
+					}
+				}, true, "Running: " + query);
+			}
 		}
 	}
 	
