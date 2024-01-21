@@ -9,9 +9,13 @@ import java.util.Date;
 import java.util.List;
 import java.util.concurrent.Future;
 
+import com.sun.webkit.ContextMenu.ShowContext;
+
+import be.nabu.eai.developer.Main.QuerySheet;
 import be.nabu.eai.developer.MainController;
 import be.nabu.eai.developer.managers.base.BaseArtifactGUIInstance;
 import be.nabu.eai.developer.managers.base.BaseJAXBComplexGUIManager;
+import be.nabu.eai.developer.util.EAIDeveloperUtils;
 import be.nabu.eai.developer.util.RunService;
 import be.nabu.eai.module.types.structure.GenerateXSDMenuEntry;
 import be.nabu.eai.repository.api.Entry;
@@ -30,6 +34,7 @@ import be.nabu.libs.types.properties.MaxOccursProperty;
 import be.nabu.libs.types.structure.Structure;
 import be.nabu.libs.validator.api.Validation;
 import javafx.application.Platform;
+import javafx.beans.property.SimpleBooleanProperty;
 import javafx.event.ActionEvent;
 import javafx.event.Event;
 import javafx.event.EventHandler;
@@ -53,12 +58,14 @@ import javafx.scene.layout.AnchorPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.VBox;
+import javafx.stage.Stage;
 
 public class JDBCPoolGUIManager extends BaseJAXBComplexGUIManager<JDBCPoolConfiguration, JDBCPoolArtifact> {
 
 	private Label runLabel;
 	private TextField limit;
 	private TextField offset;
+	private TabPane tabs;
 
 	public JDBCPoolGUIManager() {
 		super("JDBC Pool", JDBCPoolArtifact.class, new JDBCPoolManager(), JDBCPoolConfiguration.class);
@@ -86,13 +93,13 @@ public class JDBCPoolGUIManager extends BaseJAXBComplexGUIManager<JDBCPoolConfig
 		super.display(controller, anchor, artifact);
 		vbox.getChildren().addAll(anchor);
 		
-		TabPane tabs = new TabPane();
+		tabs = new TabPane();
 		tabs.setTabClosingPolicy(TabClosingPolicy.UNAVAILABLE);
 		tabs.setSide(Side.RIGHT);
 		Tab sql = new Tab("SQL");
 		tabs.getTabs().add(sql);
 		ScrollPane sqlScroll = new ScrollPane();
-		sqlScroll.setContent(buildSql(artifact));
+		sqlScroll.setContent(buildSql(artifact, null));
 		sqlScroll.setFitToWidth(true);
 		sqlScroll.setFitToHeight(true);
 		sql.setContent(sqlScroll);
@@ -102,36 +109,190 @@ public class JDBCPoolGUIManager extends BaseJAXBComplexGUIManager<JDBCPoolConfig
 		tabs.getTabs().add(configuration);
 		
 		pane.getChildren().add(tabs);
+
+		for (QuerySheet sheet : MainController.getAdditionalSheets("sql")) {
+			openSheet(artifact, sheet);
+		}
 		
 		AnchorPane.setBottomAnchor(tabs, 0d);
 		AnchorPane.setLeftAnchor(tabs, 0d);
 		AnchorPane.setRightAnchor(tabs, 0d);
 		AnchorPane.setTopAnchor(tabs, 0d);
 	}
+
+	private void openSheet(JDBCPoolArtifact artifact, QuerySheet sheet) {
+		Tab sql = new Tab(sheet.getName());
+		tabs.getTabs().add(sql);
+		ScrollPane sqlScroll = new ScrollPane();
+		sqlScroll.setContent(buildSql(artifact, sheet.getName()));
+		sqlScroll.setFitToWidth(true);
+		sqlScroll.setFitToHeight(true);
+		sql.setContent(sqlScroll);
+	}
 	
-	private Node buildSql(JDBCPoolArtifact artifact) {
+	private String getQueryToRun(AceEditor editor) {
+		String content = editor.getSelection();
+		if (content == null || content.trim().isEmpty()) {
+			content = editor.getContent();
+			
+			int start = 0;
+			int end = content.length();
+			// if the caret is positioned at the very end, it is exactly as big as the content length which we don't want
+			long caret = Math.min(content.length() - 1, editor.getCaret());
+			boolean lineFeed = false;
+			// we don't want to run everything but check for empty lines (or beginning/end)
+			for (int i = (int) caret; i >= 0; i--) {
+				// we ignore this
+				if (content.charAt(i) == '\r') {
+					continue;
+				}
+				if (content.charAt(i) == '\n') {
+					if (lineFeed) {
+						start = i;
+						break;
+					}
+					else {
+						lineFeed = true;
+					}
+				}
+				else {
+					lineFeed = false;
+				}
+			}
+			lineFeed = false;
+			// we don't want to run everything but check for empty lines (or beginning/end)
+			for (int i = (int) caret; i < content.length(); i++) {
+				// we ignore this
+				if (content.charAt(i) == '\r') {
+					continue;
+				}
+				if (content.charAt(i) == '\n') {
+					if (lineFeed) {
+						end = i;
+						break;
+					}
+					else {
+						lineFeed = true;
+					}
+				}
+				else {
+					lineFeed = false;
+				}
+			}
+			content = content.substring(start, end);
+		}
+		// remove all comments
+		content = content.replaceAll("(?m)--.*$", "").trim();
+		System.out.println("Running query: " + content);
+		return content;
+	}
+	
+	public static class BasicSheetInformation {
+		private String name;
+
+		public String getName() {
+			return name;
+		}
+
+		public void setName(String name) {
+			this.name = name;
+		}
+	}
+	
+	private Node buildSql(JDBCPoolArtifact artifact, String sheetName) {
+		// keeps track of whether the content has changed
+		SimpleBooleanProperty changed = new SimpleBooleanProperty();
+		
 		SplitPane split = new SplitPane();
 		split.setOrientation(Orientation.VERTICAL);
 		VBox results = new VBox();
 		AceEditor editor = new AceEditor();
 		editor.setKeyCombination("CONTROL_ENTERED", new KeyCodeCombination(KeyCode.ENTER, KeyCombination.CONTROL_DOWN));
-		editor.setContent("text/sql", "");
+		editor.subscribe(AceEditor.CHANGE, new EventHandler<Event>() {
+			@Override
+			public void handle(Event arg0) {
+				Platform.runLater(new Runnable() {
+					@Override
+					public void run() {
+						changed.set(true);
+					}
+				});
+			}
+		});
+		QuerySheet sheet = sheetName == null ? MainController.getSheet("sql", "artifact", artifact.getId(), true) : MainController.getSheet("sql", "custom", sheetName, false);
+		editor.setContent("text/sql", sheet.getContent() == null ? "" : sheet.getContent());
+		
 		HBox buttons = new HBox();
 		buttons.setPadding(new Insets(10));
+		
+		editor.subscribe(AceEditor.SAVE, new EventHandler<Event>() {
+			@Override
+			public void handle(Event arg0) {
+				sheet.setContent(editor.getContent());
+				MainController.saveConfiguration();
+				Platform.runLater(new Runnable() {
+					@Override
+					public void run() {
+						changed.set(false);
+					}
+				});				
+			}
+		});
+		
+		Button newSheet = new Button("New sheet");
+		newSheet.addEventHandler(ActionEvent.ANY, new EventHandler<ActionEvent>() {
+			@Override
+			public void handle(ActionEvent arg0) {
+				BasicSheetInformation information = new BasicSheetInformation();
+				
+				// public static Stage buildPopup(String windowTitle, String contentTitle, Object parameters, EventHandler<ActionEvent> ok, boolean refresh) {
+				Stage buildPopup = EAIDeveloperUtils.buildPopup("New sheet", "Sheet", information, new EventHandler<ActionEvent>() {
+					@Override
+					public void handle(ActionEvent arg0) {
+						if (information.getName() != null && !information.getName().trim().isEmpty()) {
+							QuerySheet existing = MainController.getSheet("sql", "custom", information.getName(), false);
+							if (existing == null) {
+								QuerySheet newSheet = MainController.newSheet("sql", "custom", information.getName());
+								openSheet(artifact, newSheet);
+							}
+						}
+					}
+				}, false);
+				buildPopup.show();
+			}
+		});
+		buttons.getChildren().add(newSheet);
+		
+		Button save = new Button("Save SQL");
+		save.addEventHandler(ActionEvent.ANY, new EventHandler<ActionEvent>() {
+			@Override
+			public void handle(ActionEvent arg0) {
+				sheet.setContent(editor.getContent());
+				MainController.saveConfiguration();
+				Platform.runLater(new Runnable() {
+					@Override
+					public void run() {
+						changed.set(false);
+					}
+				});
+			}
+		});
+		save.disableProperty().bind(changed.not());
+		buttons.getChildren().addAll(save);
+		
 		Button run = new Button("Run SQL");
 		runLabel = new Label();
-		runLabel.setAlignment(Pos.CENTER_LEFT);	
+		runLabel.setAlignment(Pos.CENTER_LEFT);
+		
 		HBox.setMargin(runLabel, new Insets(0, 0, 0, 10));
 		run.addEventHandler(ActionEvent.ANY, new EventHandler<ActionEvent>() {
 			@Override
 			public void handle(ActionEvent arg0) {
-				String content = editor.getSelection();
-				if (content == null || content.trim().isEmpty()) {
-					content = editor.getContent();
-				}
-				runQuery(artifact, content, results, 0);
+				String content = getQueryToRun(editor);
+				runQuery(artifact, content, results, 0, editor);
 				arg0.consume();
 			}
+
 		});
 		buttons.getChildren().addAll(run, runLabel);
 		
@@ -158,11 +319,8 @@ public class JDBCPoolGUIManager extends BaseJAXBComplexGUIManager<JDBCPoolConfig
 		editor.subscribe("CONTROL_ENTERED", new EventHandler<Event>() {
 			@Override
 			public void handle(Event arg0) {
-				String content = editor.getSelection();
-				if (content == null || content.trim().isEmpty()) {
-					content = editor.getContent();
-				}
-				runQuery(artifact, content, results, 0);
+				String content = getQueryToRun(editor);
+				runQuery(artifact, content, results, 0, editor);
 				arg0.consume();
 			}
 		});
@@ -172,7 +330,7 @@ public class JDBCPoolGUIManager extends BaseJAXBComplexGUIManager<JDBCPoolConfig
 		return split;
 	}
 	
-	private void runQuery(JDBCPoolArtifact artifact, String query, VBox results, int page) {
+	private void runQuery(JDBCPoolArtifact artifact, String query, VBox results, int page, AceEditor editor) {
 		results.getChildren().clear();
 		if (query != null && !query.trim().isEmpty()) {
 			MainController.getInstance().offload(new Runnable() {
@@ -250,6 +408,7 @@ public class JDBCPoolGUIManager extends BaseJAXBComplexGUIManager<JDBCPoolConfig
 							@Override
 							public void run() {
 								runLabel.setText("Run in: " + (new Date().getTime() - date.getTime()) + "ms");
+								editor.requestFocus();
 							}
 						});
 					}
