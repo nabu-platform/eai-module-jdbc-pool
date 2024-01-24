@@ -21,7 +21,7 @@ import be.nabu.utils.security.EncryptionXmlAdapter;
 
 @XmlRootElement(name = "jdbcPool")
 @XmlType(propOrder = { "poolProxy", "driverClassName", "jdbcUrl", "username", "password", "context", "connectionTimeout", "idleTimeout", "maximumPoolSize", "minimumIdle", "autoCommit", "maxLifetime", "dialect", "enableMetrics", 
-	"defaultLanguage", "translationGet", "translationSet", "affixes", "managedModels", "managedTypes" })
+	"defaultLanguage", "translationGet", "translationSet", "translationGetBinding", "affixes", "managedModels", "managedTypes" })
 public class JDBCPoolConfiguration {
 	private String driverClassName, jdbcUrl, username, password, context;
 	private Long connectionTimeout, idleTimeout, maxLifetime;
@@ -32,7 +32,7 @@ public class JDBCPoolConfiguration {
 	private List<AffixMapping> affixes;
 	
 	private String defaultLanguage;
-	private DefinedService translationGet, translationSet;
+	private DefinedService translationGet, translationSet, translationGetBinding;
 	private List<DefinedType> managedTypes;
 	private List<DefinedTypeRegistry> managedModels;
 	private JDBCPoolArtifact poolProxy;
@@ -175,6 +175,15 @@ public class JDBCPoolConfiguration {
 	}
 	public void setTranslationSet(DefinedService translationSet) {
 		this.translationSet = translationSet;
+	}
+	
+	@XmlJavaTypeAdapter(value = ArtifactXMLAdapter.class)
+	@InterfaceFilter(implement = "be.nabu.libs.services.jdbc.api.JDBCTranslator.getBinding")
+	public DefinedService getTranslationGetBinding() {
+		return translationGetBinding;
+	}
+	public void setTranslationGetBinding(DefinedService translationGetBinding) {
+		this.translationGetBinding = translationGetBinding;
 	}
 	
 	@ArtifactFilter(suggest = false)

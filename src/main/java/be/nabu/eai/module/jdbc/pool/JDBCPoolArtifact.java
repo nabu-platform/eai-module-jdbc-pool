@@ -638,7 +638,7 @@ public class JDBCPoolArtifact extends JAXBArtifact<JDBCPoolConfiguration> implem
 					JDBCTranslator.class,
 					getRepository(), 
 					SystemPrincipal.ROOT,
-					getConfig().getTranslationGet(), getConfig().getTranslationSet()
+					getConfig().getTranslationGet(), getConfig().getTranslationSet(), getConfig().getTranslationGetBinding()
 				) : null;
 		}
 		return translator;
