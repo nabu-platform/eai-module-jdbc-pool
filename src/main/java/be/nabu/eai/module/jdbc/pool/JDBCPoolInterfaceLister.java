@@ -20,6 +20,7 @@ public class JDBCPoolInterfaceLister implements InterfaceLister {
 					descriptions.add(new InterfaceDescriptionImpl("JDBC Pool", "Translation Getter", "be.nabu.libs.services.jdbc.api.JDBCTranslator.get"));
 					descriptions.add(new InterfaceDescriptionImpl("JDBC Pool", "Translation Setter", "be.nabu.libs.services.jdbc.api.JDBCTranslator.set"));
 					descriptions.add(new InterfaceDescriptionImpl("JDBC Pool", "Translation Binding Provider", "be.nabu.libs.services.jdbc.api.JDBCTranslator.getBinding"));
+					descriptions.add(new InterfaceDescriptionImpl("JDBC Pool", "Translation Language Mapper", "be.nabu.libs.services.jdbc.api.JDBCTranslator.mapLanguage"));
 					JDBCPoolInterfaceLister.descriptions = descriptions;
 				}
 			}
