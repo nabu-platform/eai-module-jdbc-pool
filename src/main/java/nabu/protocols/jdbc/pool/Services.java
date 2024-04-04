@@ -26,6 +26,8 @@ import be.nabu.eai.module.jdbc.pool.SQLDialectEnumerator;
 import be.nabu.eai.repository.EAIRepositoryUtils;
 import be.nabu.eai.repository.EAIResourceRepository;
 import be.nabu.eai.repository.api.Entry;
+import be.nabu.eai.repository.impl.RepositoryArtifactResolver;
+import be.nabu.eai.repository.impl.RepositoryArtifactResolver.Strategy;
 import be.nabu.eai.repository.util.ClassAdapter;
 import be.nabu.libs.artifacts.api.Artifact;
 import be.nabu.libs.artifacts.api.ArtifactProxy;
@@ -310,15 +312,22 @@ public class Services {
 	}
 
 	@WebResult(name = "connectionId")
-	public String connectionForContext(@WebParam(name = "context") String context) {
+	public String connectionForContext(@WebParam(name = "context") String context, @WebParam(name = "strategy") Strategy strategy, @WebParam(name = "requiredDependencies") List<String> requiredDependencies) {
 		if (context == null) {
 			context = ServiceUtils.getServiceContext(ServiceRuntime.getRuntime());
 		}
 		if (context == null) {
 			throw new IllegalArgumentException("No context given nor could a service context be determined");
 		}
-		DataSourceWithDialectProviderArtifact resolveFor = EAIResourceRepository.getInstance().resolveFor(context, DataSourceWithDialectProviderArtifact.class);
-		return resolveFor == null ? null : resolveFor.getId();
+		RepositoryArtifactResolver<DataSourceWithDialectProviderArtifact> resolver = new RepositoryArtifactResolver<DataSourceWithDialectProviderArtifact>(EAIResourceRepository.getInstance(), DataSourceWithDialectProviderArtifact.class);
+		if (requiredDependencies != null) {
+			resolver.setRequiredDependencies(requiredDependencies);
+		}
+		if (strategy != null) {
+			resolver.setStrategy(strategy);
+		}
+		DataSourceWithDialectProviderArtifact resolvedArtifact = resolver.getResolvedArtifact(context);
+		return resolvedArtifact == null ? null : resolvedArtifact.getId();
 	}
 	
 	@WebResult(name = "sqls")
