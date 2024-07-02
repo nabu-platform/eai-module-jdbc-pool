@@ -131,7 +131,7 @@ public class JDBCPoolGUIManager extends BaseJAXBComplexGUIManager<JDBCPoolConfig
 		Tab sql = new Tab(sheet.getName());
 		tabs.getTabs().add(sql);
 		ScrollPane sqlScroll = new ScrollPane();
-		sqlScroll.setContent(buildSql(artifact, sheet.getName()));
+		sqlScroll.setContent(buildSqlFromSheet(artifact, sheet));
 		sqlScroll.setFitToWidth(true);
 		sqlScroll.setFitToHeight(true);
 		sql.setContent(sqlScroll);
@@ -206,6 +206,10 @@ public class JDBCPoolGUIManager extends BaseJAXBComplexGUIManager<JDBCPoolConfig
 	}
 	
 	private Node buildSql(JDBCPoolArtifact artifact, String sheetName) {
+		return buildSqlFromSheet(artifact, sheetName == null ? MainController.getSheet("sql", "artifact", artifact.getId(), true) : MainController.getSheet("sql", "custom", sheetName, false));
+	}
+	
+	private Node buildSqlFromSheet(JDBCPoolArtifact artifact, QuerySheet sheet) {
 		// keeps track of whether the content has changed
 		SimpleBooleanProperty changed = new SimpleBooleanProperty();
 		
@@ -225,7 +229,6 @@ public class JDBCPoolGUIManager extends BaseJAXBComplexGUIManager<JDBCPoolConfig
 				});
 			}
 		});
-		QuerySheet sheet = sheetName == null ? MainController.getSheet("sql", "artifact", artifact.getId(), true) : MainController.getSheet("sql", "custom", sheetName, false);
 		editor.setContent("text/sql", sheet.getContent() == null ? "" : sheet.getContent());
 		
 		HBox buttons = new HBox();
@@ -268,6 +271,19 @@ public class JDBCPoolGUIManager extends BaseJAXBComplexGUIManager<JDBCPoolConfig
 			}
 		});
 		buttons.getChildren().add(newSheet);
+		
+		Button quickSheet = new Button("Quick sheet");
+		quickSheet.addEventHandler(ActionEvent.ANY, new EventHandler<ActionEvent>() {
+			@Override
+			public void handle(ActionEvent arg0) {
+				QuerySheet existing = new QuerySheet();
+				existing.setLanguage("sql");
+				existing.setName("Temporary");
+				existing.setType("custom");
+				openSheet(artifact, existing);
+			}
+		});
+		buttons.getChildren().add(quickSheet);
 		
 		Button save = new Button("Save SQL");
 		save.addEventHandler(ActionEvent.ANY, new EventHandler<ActionEvent>() {

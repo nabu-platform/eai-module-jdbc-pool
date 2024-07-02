@@ -379,4 +379,29 @@ public class Services {
 		}
 		return result.toString();
 	}
+	
+	@WebResult(name = "connections")
+	public List<String> listConnections(@WebParam(name = "dialect") String dialect, @WebParam(name = "driver") String driver) {
+		List<String> connections = new ArrayList<String>();
+		for (DataSourceWithDialectProviderArtifact connection : EAIResourceRepository.getInstance().getArtifacts(DataSourceWithDialectProviderArtifact.class)) {
+			// we currently want unique connections, so not proxied connections, we can add a parameter to tweak this behavior if needed
+			if (connection instanceof ArtifactProxy) {
+				Artifact proxied = ((ArtifactProxy) connection).getProxied();
+				if (proxied != null) {
+					continue;
+				}
+			}
+			boolean matches = true;
+			if (dialect != null) {
+				matches &= connection.getDialect() != null && dialect.equals(connection.getDialect().getClass().getName());
+			}
+			if (driver != null && connection instanceof JDBCPoolArtifact) {
+				matches &= ((JDBCPoolArtifact) connection).getConfig().getDriverClassName() != null && driver.equals(((JDBCPoolArtifact) connection).getConfig().getDriverClassName());
+			}
+			if (matches) {
+				connections.add(connection.getId());
+			}
+		}
+		return connections;
+	}
 }
