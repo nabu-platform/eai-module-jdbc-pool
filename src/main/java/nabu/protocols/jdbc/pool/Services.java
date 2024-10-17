@@ -217,7 +217,13 @@ public class Services {
 	}
 	
 	@WebResult(name = "managedTypes")
-	public List<String> getManagedTypes(@NotNull @WebParam(name = "jdbcPoolId") String jdbcPoolId) {
+	public List<String> getManagedTypes(@WebParam(name = "jdbcPoolId") String jdbcPoolId) {
+		if (jdbcPoolId == null) {
+			jdbcPoolId = connectionForContext(null, null, null);
+		}
+		if (jdbcPoolId == null) {
+			return null;
+		}
 		JDBCPoolArtifact resolve = (JDBCPoolArtifact) EAIResourceRepository.getInstance().resolve(jdbcPoolId);
 		if (resolve == null) {
 			throw new IllegalArgumentException("Could not find pool: " + jdbcPoolId);
@@ -381,7 +387,7 @@ public class Services {
 	}
 	
 	@WebResult(name = "connections")
-	public List<String> listConnections(@WebParam(name = "dialect") String dialect, @WebParam(name = "driver") String driver) {
+	public List<String> listConnections(@WebParam(name = "dialect") String dialect, @WebParam(name = "driver") String driver, @WebParam(name = "active") Boolean active) {
 		List<String> connections = new ArrayList<String>();
 		for (DataSourceWithDialectProviderArtifact connection : EAIResourceRepository.getInstance().getArtifacts(DataSourceWithDialectProviderArtifact.class)) {
 			// we currently want unique connections, so not proxied connections, we can add a parameter to tweak this behavior if needed
@@ -398,7 +404,18 @@ public class Services {
 			if (driver != null && connection instanceof JDBCPoolArtifact) {
 				matches &= ((JDBCPoolArtifact) connection).getConfig().getDriverClassName() != null && driver.equals(((JDBCPoolArtifact) connection).getConfig().getDriverClassName());
 			}
-			if (matches) {
+			if (active != null && connection instanceof JDBCPoolArtifact) {
+				// an empty jdbc url points to an inactive connection
+				String jdbcUrl = ((JDBCPoolArtifact) connection).getConfig().getJdbcUrl();
+				boolean isActive = jdbcUrl != null && !jdbcUrl.trim().isEmpty();
+				if (active && !isActive) {
+					matches = false;
+				}
+				else if (!active && isActive) {
+					matches = false;
+				}
+			}
+			if (matches && !connections.contains(connection.getId())) {
 				connections.add(connection.getId());
 			}
 		}
