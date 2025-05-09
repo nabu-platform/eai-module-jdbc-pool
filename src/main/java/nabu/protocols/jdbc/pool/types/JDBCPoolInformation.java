@@ -18,9 +18,15 @@
 package nabu.protocols.jdbc.pool.types;
 
 public class JDBCPoolInformation {
-	private String defaultLanguage;
+	private String defaultLanguage, id;
 	private boolean translatable, started, proxy;
 	private String jdbcUrl, username, driverClass, dialect;
+	public String getId() {
+		return id;
+	}
+	public void setId(String id) {
+		this.id = id;
+	}
 	public String getDefaultLanguage() {
 		return defaultLanguage;
 	}

@@ -54,7 +54,6 @@ import be.nabu.libs.resources.ResourceUtils;
 import be.nabu.libs.services.ServiceRuntime;
 import be.nabu.libs.services.ServiceUtils;
 import be.nabu.libs.services.api.ServiceException;
-import be.nabu.libs.services.jdbc.JDBCService;
 import be.nabu.libs.services.jdbc.JDBCServiceInstance;
 import be.nabu.libs.services.jdbc.JDBCUtils;
 import be.nabu.libs.services.jdbc.api.DataSourceWithDialectProviderArtifact;
@@ -64,6 +63,7 @@ import be.nabu.libs.types.TypeUtils;
 import be.nabu.libs.types.api.ComplexContent;
 import be.nabu.libs.types.api.ComplexType;
 import be.nabu.libs.types.api.DefinedType;
+import be.nabu.libs.types.api.DefinedTypeRegistry;
 import be.nabu.libs.types.api.Element;
 import be.nabu.libs.types.api.SimpleType;
 import be.nabu.libs.types.properties.CollectionNameProperty;
@@ -178,21 +178,26 @@ public class Services {
 		if (jdbcPoolId != null) {
 			JDBCPoolArtifact resolve = (JDBCPoolArtifact) EAIResourceRepository.getInstance().resolve(jdbcPoolId);
 			if (resolve != null) {
-				JDBCPoolInformation information = new JDBCPoolInformation();
-				information.setStarted(resolve.isStarted());
-				information.setDefaultLanguage(resolve.getConfig().getDefaultLanguage());
-				information.setTranslatable(resolve.getConfig().getTranslationGet() != null && resolve.getConfig().getTranslationSet() != null);
-				if (resolve.getConfig().getDialect() != null) {
-					information.setDialect(resolve.getConfig().getDialect().getName());
-				}
-				information.setDriverClass(resolve.getConfig().getDriverClassName());
-				information.setJdbcUrl(resolve.getConfig().getJdbcUrl());
-				information.setUsername(resolve.getConfig().getUsername());
-				information.setProxy(resolve.getConfig().getPoolProxy() != null);
-				return information;
+				return toInformation(resolve);
 			}
 		}
 		return null;
+	}
+
+	private JDBCPoolInformation toInformation(JDBCPoolArtifact resolve) {
+		JDBCPoolInformation information = new JDBCPoolInformation();
+		information.setStarted(resolve.isStarted());
+		information.setId(resolve.getId());
+		information.setDefaultLanguage(resolve.getConfig().getDefaultLanguage());
+		information.setTranslatable(resolve.getConfig().getTranslationGet() != null && resolve.getConfig().getTranslationSet() != null);
+		if (resolve.getConfig().getDialect() != null) {
+			information.setDialect(resolve.getConfig().getDialect().getName());
+		}
+		information.setDriverClass(resolve.getConfig().getDriverClassName());
+		information.setJdbcUrl(resolve.getConfig().getJdbcUrl());
+		information.setUsername(resolve.getConfig().getUsername());
+		information.setProxy(resolve.getConfig().getPoolProxy() != null);
+		return information;
 	}
 	
 	@WebResult(name = "uri")
@@ -273,6 +278,31 @@ public class Services {
 			}
 		}
 		return list;
+	}
+	
+	@WebResult(name = "pools")
+	public List<JDBCPoolInformation> listForDataModel(@WebParam(name = "dataModelId") String modelId) {
+		if (modelId == null) {
+			return null;
+		}
+		DefinedTypeRegistry registry = (DefinedTypeRegistry) EAIResourceRepository.getInstance().resolve(modelId);
+		if (registry == null) {
+			throw new IllegalArgumentException("Unknown data model: " + modelId);
+		}
+		List<JDBCPoolArtifact> supported = new ArrayList<JDBCPoolArtifact>();
+		for (JDBCPoolArtifact pool : EAIResourceRepository.getInstance().getArtifacts(JDBCPoolArtifact.class)) {
+			if (pool.getConfig().getManagedModels() != null && pool.getConfig().getManagedModels().contains(registry)) {
+				JDBCPoolArtifact poolToAdd = pool.getConfig().getPoolProxy() == null ? pool : pool.getConfig().getPoolProxy();
+				if (!supported.contains(poolToAdd)) {
+					supported.add(poolToAdd);
+				}
+			}
+		}
+		List<JDBCPoolInformation> informations = new ArrayList<JDBCPoolInformation>();
+		for (JDBCPoolArtifact single : supported) {
+			informations.add(toInformation(single));
+		}
+		return informations;
 	}
 	
 	@WebResult(name = "changes")
