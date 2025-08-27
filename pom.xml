@@ -35,7 +35,6 @@
 		<dependency>
 			<groupId>be.nabu.libs.services</groupId>
 			<artifactId>services-jdbc</artifactId>
-			<scope>provided</scope>
 		</dependency>
 		<dependency>
 			<groupId>be.nabu.libs.metrics</groupId>
@@ -50,11 +49,6 @@
 		<dependency>
 			<groupId>nabu</groupId>
 			<artifactId>eai-module-types-structure</artifactId>
-			<scope>provided</scope>
-		</dependency>
-		<dependency>
-			<groupId>nabu</groupId>
-			<artifactId>eai-module-data-model</artifactId>
 			<scope>provided</scope>
 		</dependency>
 		<dependency>

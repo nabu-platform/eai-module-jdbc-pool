@@ -29,7 +29,6 @@ import be.nabu.eai.developer.managers.util.SimplePropertyUpdater;
 import be.nabu.eai.developer.util.Confirm;
 import be.nabu.eai.developer.util.EAIDeveloperUtils;
 import be.nabu.eai.developer.util.Confirm.ConfirmType;
-import be.nabu.eai.module.data.model.DataModelArtifact;
 import be.nabu.eai.module.jdbc.context.GenerateDatabaseScriptContextMenu;
 import be.nabu.eai.module.jdbc.pool.JDBCPoolArtifact;
 import be.nabu.eai.module.jdbc.pool.JDBCPoolManager;
@@ -38,6 +37,7 @@ import be.nabu.eai.repository.api.Entry;
 import be.nabu.eai.repository.api.ResourceEntry;
 import be.nabu.eai.repository.resources.RepositoryEntry;
 import be.nabu.libs.types.api.DefinedType;
+import be.nabu.libs.types.api.DefinedTypeRegistry;
 import javafx.event.ActionEvent;
 import javafx.event.EventHandler;
 import javafx.geometry.Insets;
@@ -252,15 +252,15 @@ public class JDBCPoolCollectionManager implements CollectionManager {
 		// if no chosen, we can't open it
 		openConnection.setDisable(chosen == null);
 		
-		DataModelArtifact chosenModel = null;
-		for (DataModelArtifact model : entry.getRepository().getArtifacts(DataModelArtifact.class)) {
+		DefinedTypeRegistry chosenModel = null;
+		for (DefinedTypeRegistry model : entry.getRepository().getArtifacts(DefinedTypeRegistry.class)) {
 			if (model.getId().startsWith(entry.getId() + ".")) {
 				chosenModel = model;
 				break;
 			}
 		}
 		
-		DataModelArtifact chosenModelFinal = chosenModel;
+		DefinedTypeRegistry chosenModelFinal = chosenModel;
 		openModel.addEventHandler(ActionEvent.ANY, new EventHandler<ActionEvent>() {
 			@Override
 			public void handle(ActionEvent arg0) {

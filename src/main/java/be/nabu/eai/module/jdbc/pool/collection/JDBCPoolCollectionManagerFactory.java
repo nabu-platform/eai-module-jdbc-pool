@@ -18,6 +18,7 @@
 package be.nabu.eai.module.jdbc.pool.collection;
 
 import java.io.IOException;
+import java.lang.reflect.Constructor;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -34,9 +35,6 @@ import be.nabu.eai.developer.api.EntryAcceptor;
 import be.nabu.eai.developer.collection.EAICollectionUtils;
 import be.nabu.eai.developer.managers.util.SimplePropertyUpdater;
 import be.nabu.eai.developer.util.EAIDeveloperUtils;
-import be.nabu.eai.module.data.model.DataModelArtifact;
-import be.nabu.eai.module.data.model.DataModelManager;
-import be.nabu.eai.module.data.model.DataModelType;
 import be.nabu.eai.module.jdbc.context.GenerateDatabaseScriptContextMenu;
 import be.nabu.eai.module.jdbc.pool.JDBCPoolArtifact;
 import be.nabu.eai.module.jdbc.pool.JDBCPoolManager;
@@ -44,11 +42,15 @@ import be.nabu.eai.module.jdbc.pool.api.JDBCPoolWizard;
 import be.nabu.eai.repository.CollectionImpl;
 import be.nabu.eai.repository.EAIRepositoryUtils;
 import be.nabu.eai.repository.EAIResourceRepository;
+import be.nabu.eai.repository.api.ArtifactManager;
 import be.nabu.eai.repository.api.Collection;
 import be.nabu.eai.repository.api.Entry;
+import be.nabu.eai.repository.api.Repository;
 import be.nabu.eai.repository.api.ResourceEntry;
 import be.nabu.eai.repository.resources.RepositoryEntry;
+import be.nabu.libs.artifacts.api.Artifact;
 import be.nabu.libs.property.ValueUtils;
+import be.nabu.libs.resources.api.ResourceContainer;
 import be.nabu.libs.services.api.DefinedService;
 import be.nabu.libs.types.api.ComplexType;
 import be.nabu.libs.types.api.DefinedType;
@@ -337,6 +339,7 @@ public class JDBCPoolCollectionManagerFactory implements CollectionManagerFactor
 		jdbc.getConfig().setContext(project.getId());
 	}
 	
+	@SuppressWarnings({ "unchecked", "rawtypes" })
 	private <T> String create(Entry project, BasicInformation information, JDBCPoolWizard<T> wizard, T properties) {
 		try {
 			RepositoryEntry jdbcEntry = createDatabaseEntry((RepositoryEntry) project, information.getCorrectName(), information.getName());
@@ -349,13 +352,20 @@ public class JDBCPoolCollectionManagerFactory implements CollectionManagerFactor
 			}
 			
 			// create data model, we always do this (main database or not)
-			RepositoryEntry dataModelEntry = jdbcEntry.getParent().createNode("model", new DataModelManager(), true);
-			dataModelEntry.getNode().setName("Model");
-			dataModelEntry.saveNode();
-			DataModelArtifact model = new DataModelArtifact(dataModelEntry.getId(), dataModelEntry.getContainer(), dataModelEntry.getRepository());
-			model.getConfig().setType(DataModelType.DATABASE);
-			new DataModelManager().save(dataModelEntry, model);
-			EAIDeveloperUtils.created(dataModelEntry.getId());
+			Class<?> dataModelManagerClass = Thread.currentThread().getContextClassLoader().loadClass("be.nabu.eai.module.data.model.DataModelManager");
+			Class<?> dataModelArtifactClass = Thread.currentThread().getContextClassLoader().loadClass("be.nabu.eai.module.data.model.DataModelArtifact");
+			DefinedTypeRegistry model = null;
+			// if we have both, instantiate a default data model for this connection
+			if (dataModelArtifactClass != null && dataModelManagerClass != null) {
+				ArtifactManager dataModelManager = (ArtifactManager<?>) dataModelManagerClass.newInstance();
+				RepositoryEntry dataModelEntry = jdbcEntry.getParent().createNode("model", dataModelManager, true);
+				dataModelEntry.getNode().setName("Model");
+				dataModelEntry.saveNode();
+				Constructor<?> constructor = dataModelArtifactClass.getConstructor(String.class, ResourceContainer.class, Repository.class);
+				model = (DefinedTypeRegistry) constructor.newInstance(dataModelEntry.getId(), dataModelEntry.getContainer(), dataModelEntry.getRepository());
+				dataModelManager.save(dataModelEntry, model);
+				EAIDeveloperUtils.created(dataModelEntry.getId());
+			}
 			
 			// if it is a main database, we prefill it with all the necessary things
 			if (information.isMainDatabase()) {
@@ -365,7 +375,9 @@ public class JDBCPoolCollectionManagerFactory implements CollectionManagerFactor
 				if (jdbc.getConfig().getManagedModels() == null) {
 					jdbc.getConfig().setManagedModels(new ArrayList<DefinedTypeRegistry>());
 				}
-				jdbc.getConfig().getManagedModels().add(model);
+				if (model != null) {
+					jdbc.getConfig().getManagedModels().add(model);
+				}
 				
 				Map<String, DefinedTypeRegistry> definedModelNames = new HashMap<String, DefinedTypeRegistry>();
 				for (DefinedTypeRegistry managed : jdbc.getConfig().getManagedModels()) {
@@ -437,7 +449,7 @@ public class JDBCPoolCollectionManagerFactory implements CollectionManagerFactor
 			else {
 				MainController.getInstance().getAsynchronousRemoteServer().reload(jdbc.getId());
 			}
-			return dataModelEntry.getId();
+			return model == null ? jdbcEntry.getId() : model.getId();
 		}
 		catch (Exception e) {
 			throw new RuntimeException(e);
