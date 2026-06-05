@@ -361,11 +361,8 @@ public class JDBCPoolArtifactFragmentManager extends DefinedServiceArtifactFragm
 	}
 
 	private String toXml(Document document) throws Exception {
-		javax.xml.transform.Transformer transformer = javax.xml.transform.TransformerFactory.newInstance().newTransformer();
-		transformer.setOutputProperty(javax.xml.transform.OutputKeys.OMIT_XML_DECLARATION, "no");
-		transformer.setOutputProperty(javax.xml.transform.OutputKeys.INDENT, "yes");
 		ByteArrayOutputStream output = new ByteArrayOutputStream();
-		transformer.transform(new javax.xml.transform.dom.DOMSource(document), new javax.xml.transform.stream.StreamResult(output));
+		EAIRepositoryUtils.prettyPrint(document, output);
 		return new String(output.toByteArray(), StandardCharsets.UTF_8);
 	}
 }
