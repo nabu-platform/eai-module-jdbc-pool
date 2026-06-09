@@ -65,7 +65,8 @@ public class JDBCPoolArtifactFragmentManager extends DefinedServiceArtifactFragm
 		fragments.add(new ArtifactFragment() {
 			@Override
 			public boolean isEditable() {
-				return EAIResourceRepository.getInstance().getEntry(artifact.getId()) instanceof ResourceEntry;
+				Entry entry = EAIResourceRepository.getInstance().getEntry(artifact.getId());
+				return entry instanceof ResourceEntry && entry.isEditable();
 			}
 
 			@Override
