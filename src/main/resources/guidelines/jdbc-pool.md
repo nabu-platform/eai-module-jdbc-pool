@@ -3,6 +3,13 @@
 Fragments:
 - `metadata.xml`: repository metadata around the artifact
 - `jdbc-connection.xml`: JDBC connection configuration
+- `input.xml`: when using a jdbcPool as service
+- `output.xml`: when using a jdbcPool as service
+
+Every jdbcPool is also an executable service where you can run arbitrary queries against its database.
+This should NEVER be used in code but can be useful for debugging or raw manipulation.
+Check the `input.xml` fragment of the jdbcPool for the required input shape.
+Only pass a `resultType` to the input if you want the output bound to a specific structure definition. Otherwise leave it empty.
 
 ## Fragment: jdbc-connection.xml
 
@@ -30,6 +37,9 @@ Fields:
 - `affixes`: optional datasource affix mappings.
 - `managedModels`: optional managed model registries.
 - `managedTypes`: optional explicitly managed types.
+
+Managed models:
+- all types in the model are automatically synced to the database tables using only non-destructive changes
 
 Password handling:
 - The returned `jdbc-connection.xml` never includes the current password.

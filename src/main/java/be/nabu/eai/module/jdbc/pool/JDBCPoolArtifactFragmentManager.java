@@ -25,11 +25,14 @@ import be.nabu.eai.repository.api.Entry;
 import be.nabu.eai.repository.api.ResourceEntry;
 import be.nabu.eai.repository.impl.DefinedServiceArtifactFragmentManager;
 import be.nabu.eai.repository.resources.RepositoryEntry;
+import be.nabu.libs.artifacts.api.Artifact;
 import be.nabu.libs.services.DefinedServiceInterfaceResolverFactory;
 import be.nabu.libs.services.api.DefinedService;
 import be.nabu.libs.services.api.DefinedServiceInterface;
 import be.nabu.libs.services.jdbc.api.SQLDialect;
 import be.nabu.libs.services.pojo.POJOUtils;
+import be.nabu.libs.types.api.DefinedType;
+import be.nabu.libs.types.api.DefinedTypeRegistry;
 import be.nabu.libs.validator.api.Validation;
 import be.nabu.libs.validator.api.ValidationMessage;
 
@@ -45,6 +48,8 @@ public class JDBCPoolArtifactFragmentManager extends DefinedServiceArtifactFragm
 	private static final String ENABLE_METRICS = "enableMetrics";
 	private static final String KNOWN_DRIVERS_PLACEHOLDER = "{{KNOWN_DRIVERS}}";
 	private static final String KNOWN_DIALECTS_PLACEHOLDER = "{{KNOWN_DIALECTS}}";
+	private static final String MANAGED_MODELS = "managedModels";
+	private static final String MANAGED_TYPES = "managedTypes";
 
 	@Override
 	public Entry createArtifact(Entry parent, String name) {
@@ -126,6 +131,7 @@ public class JDBCPoolArtifactFragmentManager extends DefinedServiceArtifactFragm
 		List<Validation<?>> validations = new ArrayList<Validation<?>>();
 		try {
 			String mergedContent = mergeRetainedFields(artifact, newContent);
+			validateConfiguredArtifacts(artifact, mergedContent, validations);
 			JDBCPoolArtifact candidate = new JDBCPoolArtifact(artifact.getId(), entry.getContainer(), entry.getRepository());
 			candidate.setConfig(candidate.unmarshal(new ByteArrayInputStream(mergedContent.getBytes(StandardCharsets.UTF_8))));
 			validateConfiguration(candidate.getConfig(), validations);
@@ -192,6 +198,42 @@ public class JDBCPoolArtifactFragmentManager extends DefinedServiceArtifactFragm
 		retainField(currentRoot, updatedRoot, updated, PASSWORD);
 		retainField(currentRoot, updatedRoot, updated, ENABLE_METRICS);
 		return toXml(updated);
+	}
+
+	private void validateConfiguredArtifacts(JDBCPoolArtifact artifact, String content, List<Validation<?>> validations) throws Exception {
+		Document document = parseDocument(content);
+		validateConfiguredArtifactList(artifact, document, MANAGED_MODELS, DefinedTypeRegistry.class, validations);
+		validateConfiguredArtifactList(artifact, document, MANAGED_TYPES, DefinedType.class, validations);
+	}
+
+	private void validateConfiguredArtifactList(JDBCPoolArtifact artifact, Document document, String fieldName, Class<? extends Artifact> expectedType, List<Validation<?>> validations) {
+		for (String artifactId : getDirectChildValues(document.getDocumentElement(), fieldName)) {
+			Artifact resolved = artifact.getRepository().resolve(artifactId);
+			if (resolved == null) {
+				validations.add(new ValidationMessage(ValidationMessage.Severity.ERROR, "Configured " + fieldName + " entry '" + artifactId + "' could not be resolved"));
+			}
+			else if (!expectedType.isAssignableFrom(resolved.getClass())) {
+				validations.add(new ValidationMessage(ValidationMessage.Severity.ERROR, "Configured " + fieldName + " entry '" + artifactId + "' resolves to " + resolved.getClass().getName() + " but must implement " + expectedType.getName()));
+			}
+		}
+	}
+
+	private List<String> getDirectChildValues(Element parent, String childName) {
+		List<String> values = new ArrayList<String>();
+		NodeList childNodes = parent.getChildNodes();
+		for (int i = 0; i < childNodes.getLength(); i++) {
+			Node child = childNodes.item(i);
+			if (child.getNodeType() == Node.ELEMENT_NODE && childName.equals(child.getNodeName())) {
+				String value = child.getTextContent();
+				if (value != null) {
+					value = value.trim();
+					if (!value.isEmpty()) {
+						values.add(value);
+					}
+				}
+			}
+		}
+		return values;
 	}
 
 	private void validateConfiguration(JDBCPoolConfiguration configuration, List<Validation<?>> validations) {
